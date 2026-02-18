@@ -110,3 +110,41 @@ fn admin_help_supports_migrate_reindex_compact_archive() {
             .and(predicate::str::contains("archive")),
     );
 }
+
+#[test]
+fn user_create_requires_name_flag() {
+    let mut cmd = bin();
+    cmd.args(["user", "create"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--name"));
+}
+
+#[test]
+fn identity_link_requires_uid_channel_and_channel_user_id() {
+    let mut cmd = bin();
+    cmd.args(["identity", "link", "--uid", "u1", "--channel", "telegram"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--channel-user-id"));
+}
+
+#[test]
+fn scope_create_requires_id_and_type() {
+    let mut cmd = bin();
+    cmd.args(["scope", "create", "--id", "shared:couple"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--type"));
+}
+
+#[test]
+fn user_create_with_name_runs() {
+    let mut cmd = bin();
+    cmd.args(["user", "create", "--name", "Yongseong"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "TODO: implement user::create name=Yongseong",
+        ));
+}
