@@ -1382,3 +1382,99 @@ fn ingest_request_logged_requires_pattern() {
             "request.logged requires string field: pattern",
         ));
 }
+
+#[test]
+fn doctor_supports_json_output() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("doctor-json.db")
+        .to_string_lossy()
+        .to_string();
+    migrate_db(&db_str);
+
+    let mut cmd = bin();
+    cmd.args(["--db", &db_str, "--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("\"ok\":true")
+                .and(predicate::str::contains("\"schema_initialized\":true")),
+        );
+}
+
+#[test]
+fn query_topk_supports_json_output() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("topk-json.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let f = dir.path().join("m.json");
+    fs::write(&f, r#"{"cuisine":"korean"}"#).unwrap();
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &f.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut topk = bin();
+    topk.args([
+        "--db",
+        &db_str,
+        "--json",
+        "query",
+        "topk",
+        "--uid",
+        &uid,
+        "--scope",
+        "private:test",
+        "--topic",
+        "food_pref",
+        "--limit",
+        "1",
+    ])
+    .assert()
+    .success()
+    .stdout(
+        predicate::str::contains("\"rank\":1").and(predicate::str::contains("\"item\":\"korean\"")),
+    );
+}

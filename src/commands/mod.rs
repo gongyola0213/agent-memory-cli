@@ -4,12 +4,47 @@ use crate::service::{
     identity_service, ingest_service, query_service, scope_service, user_service,
 };
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn doctor() {
-    println!("agent-memory-cli is ready");
+pub fn doctor(db_path: &str, as_json: bool) -> Result<(), String> {
+    let db_exists = std::path::Path::new(db_path).exists();
+    let schema_initialized = if db_exists {
+        match db::connect(db_path) {
+            Ok(conn) => {
+                let count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='users'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                count > 0
+            }
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
+    if as_json {
+        println!(
+            "{}",
+            json!({
+                "ok": true,
+                "db_path": db_path,
+                "db_exists": db_exists,
+                "schema_initialized": schema_initialized
+            })
+        );
+    } else {
+        println!("agent-memory-cli is ready");
+        println!("db_path={db_path}");
+        println!("db_exists={db_exists}");
+        println!("schema_initialized={schema_initialized}");
+    }
+    Ok(())
 }
 
 pub fn todo(group: &str, command: &str) {
@@ -231,10 +266,17 @@ pub fn ingest_event(
     Ok(())
 }
 
-pub fn query_latest(db_path: &str, uid: &str, scope_id: &str) -> Result<(), String> {
+pub fn query_latest(db_path: &str, uid: &str, scope_id: &str, as_json: bool) -> Result<(), String> {
     let conn = open_db_checked(db_path)?;
     if let Some((event_id, event_type, event_ts)) = query_service::latest(&conn, uid, scope_id)? {
-        println!("latest event_id={event_id} type={event_type} ts={event_ts}");
+        if as_json {
+            println!(
+                "{}",
+                json!({"event_id": event_id, "event_type": event_type, "event_ts": event_ts})
+            );
+        } else {
+            println!("latest event_id={event_id} type={event_type} ts={event_ts}");
+        }
     }
     Ok(())
 }
@@ -245,13 +287,23 @@ pub fn query_metric(
     scope_id: &str,
     key: Option<&str>,
     prefix: Option<&str>,
+    as_json: bool,
 ) -> Result<(), String> {
     if key.is_none() && prefix.is_none() {
         return Err("query metric requires either --key or --prefix".to_string());
     }
     let conn = open_db_checked(db_path)?;
-    for (k, v, j) in query_service::metric(&conn, uid, scope_id, key, prefix)? {
-        println!("metric key={k} value={v} json={j}");
+    let rows = query_service::metric(&conn, uid, scope_id, key, prefix)?;
+    if as_json {
+        let mapped: Vec<_> = rows
+            .into_iter()
+            .map(|(k, v, j)| json!({"key": k, "value": v, "json": j}))
+            .collect();
+        println!("{}", json!(mapped));
+    } else {
+        for (k, v, j) in rows {
+            println!("metric key={k} value={v} json={j}");
+        }
     }
     Ok(())
 }
@@ -262,10 +314,20 @@ pub fn query_topk(
     scope_id: &str,
     topic: &str,
     limit: usize,
+    as_json: bool,
 ) -> Result<(), String> {
     let conn = open_db_checked(db_path)?;
-    for (rank, item, weight) in query_service::topk(&conn, uid, scope_id, topic, limit)? {
-        println!("rank={rank} item={item} weight={weight}");
+    let rows = query_service::topk(&conn, uid, scope_id, topic, limit)?;
+    if as_json {
+        let mapped: Vec<_> = rows
+            .into_iter()
+            .map(|(rank, item, weight)| json!({"rank": rank, "item": item, "weight": weight}))
+            .collect();
+        println!("{}", json!(mapped));
+    } else {
+        for (rank, item, weight) in rows {
+            println!("rank={rank} item={item} weight={weight}");
+        }
     }
     Ok(())
 }
