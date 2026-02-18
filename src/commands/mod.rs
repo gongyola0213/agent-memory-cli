@@ -45,13 +45,25 @@ fn new_id(prefix: &str) -> String {
     format!("{prefix}_{n}")
 }
 
-fn open_and_migrate(db_path: &str) -> Result<Connection, String> {
-    admin_migrate(db_path)?;
-    db::connect(db_path)
+fn open_db_checked(db_path: &str) -> Result<Connection, String> {
+    let conn = db::connect(db_path)?;
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='users'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("failed schema check: {e}"))?;
+    if exists == 0 {
+        return Err(
+            "schema not initialized. run: agent-memory-cli admin migrate --db <path>".to_string(),
+        );
+    }
+    Ok(conn)
 }
 
 pub fn user_create(db_path: &str, name: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let uid = new_id("u");
     let now = now_ts();
     let observer = NoopObserver;
@@ -62,7 +74,7 @@ pub fn user_create(db_path: &str, name: &str) -> Result<(), String> {
 }
 
 pub fn user_list(db_path: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     for (uid, name) in user_service::list(&conn)? {
         println!("uid={uid} name={name}");
     }
@@ -70,7 +82,7 @@ pub fn user_list(db_path: &str) -> Result<(), String> {
 }
 
 pub fn user_show(db_path: &str, uid: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     match user_service::show(&conn, uid)? {
         Some(name) => {
             println!("uid={uid} name={name}");
@@ -81,7 +93,7 @@ pub fn user_show(db_path: &str, uid: &str) -> Result<(), String> {
 }
 
 pub fn user_update(db_path: &str, uid: &str, name: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let now = now_ts();
     let n = user_service::update(&conn, uid, name, &now)?;
     if n == 0 {
@@ -97,7 +109,7 @@ pub fn identity_link(
     channel: &str,
     channel_user_id: &str,
 ) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let now = now_ts();
     let identity_id = new_id("ident");
     let observer = NoopObserver;
@@ -117,7 +129,7 @@ pub fn identity_link(
 }
 
 pub fn identity_resolve(db_path: &str, channel: &str, channel_user_id: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     match identity_service::resolve(&conn, channel, channel_user_id)? {
         Some(uid) => {
             println!("resolved uid={uid} channel={channel} channel_user_id={channel_user_id}");
@@ -128,7 +140,7 @@ pub fn identity_resolve(db_path: &str, channel: &str, channel_user_id: &str) -> 
 }
 
 pub fn identity_unlink(db_path: &str, channel: &str, channel_user_id: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let n = identity_service::unlink(&conn, channel, channel_user_id)?;
     if n == 0 {
         return Err(format!("identity not found: {channel}:{channel_user_id}"));
@@ -138,7 +150,7 @@ pub fn identity_unlink(db_path: &str, channel: &str, channel_user_id: &str) -> R
 }
 
 pub fn scope_create(db_path: &str, scope_id: &str, scope_type: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let now = now_ts();
     scope_service::create(&conn, scope_id, scope_type, &now)?;
     println!("created scope id={scope_id} type={scope_type}");
@@ -151,7 +163,7 @@ pub fn scope_add_member(
     uid: &str,
     role: &str,
 ) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let now = now_ts();
     let observer = NoopObserver;
     scope_service::add_member(&conn, scope_id, uid, role, &now, &observer)?;
@@ -160,7 +172,7 @@ pub fn scope_add_member(
 }
 
 pub fn scope_list(db_path: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     for (id, kind) in scope_service::list(&conn)? {
         println!("id={id} type={kind}");
     }
@@ -168,7 +180,7 @@ pub fn scope_list(db_path: &str) -> Result<(), String> {
 }
 
 pub fn scope_members(db_path: &str, scope_id: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     for (uid, role) in scope_service::members(&conn, scope_id)? {
         println!("scope_id={scope_id} uid={uid} role={role}");
     }
@@ -183,7 +195,7 @@ pub fn ingest_event(
     file: &str,
     idempotency_key: Option<&str>,
 ) -> Result<(), String> {
-    let mut conn = open_and_migrate(db_path)?;
+    let mut conn = open_db_checked(db_path)?;
     let raw = fs::read_to_string(file).map_err(|e| format!("failed to read event file: {e}"))?;
     let payload: Value =
         serde_json::from_str(&raw).map_err(|e| format!("invalid json payload: {e}"))?;
@@ -318,7 +330,7 @@ fn rebuild_topk(
 }
 
 pub fn query_latest(db_path: &str, uid: &str, scope_id: &str) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let mut stmt = conn
         .prepare(
             "SELECT event_id, event_type, event_ts FROM events
@@ -353,7 +365,7 @@ pub fn query_metric(
         return Err("query metric requires either --key or --prefix".to_string());
     }
 
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
 
     if let Some(key) = key {
         let mut stmt = conn
@@ -409,7 +421,7 @@ pub fn query_topk(
     topic: &str,
     limit: usize,
 ) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let conn = open_db_checked(db_path)?;
     let mut stmt = conn
         .prepare(
             "SELECT rank, item_key, weight FROM topk

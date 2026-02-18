@@ -8,6 +8,13 @@ fn bin() -> Command {
     Command::new(assert_cmd::cargo::cargo_bin!("agent-memory-cli"))
 }
 
+fn migrate_db(db: &str) {
+    let mut cmd = bin();
+    cmd.args(["--db", db, "admin", "migrate"])
+        .assert()
+        .success();
+}
+
 #[test]
 fn doctor_command_returns_ready_message() {
     let mut cmd = bin();
@@ -150,6 +157,8 @@ fn user_create_with_name_runs() {
         .to_string_lossy()
         .to_string();
 
+    migrate_db(&db_str);
+
     let mut cmd = bin();
     cmd.args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
         .assert()
@@ -249,6 +258,7 @@ fn user_create_then_list_includes_user() {
         .join("list-user.db")
         .to_string_lossy()
         .to_string();
+    migrate_db(&db_str);
 
     let mut create = bin();
     create
@@ -271,6 +281,7 @@ fn identity_link_and_resolve_flow() {
         .join("identity-flow.db")
         .to_string_lossy()
         .to_string();
+    migrate_db(&db_str);
 
     let mut create = bin();
     create
@@ -324,6 +335,7 @@ fn scope_create_add_member_and_list_members_flow() {
         .join("scope-flow.db")
         .to_string_lossy()
         .to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -379,6 +391,7 @@ fn ingest_meal_rated_updates_food_topk() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("ingest-food.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -455,6 +468,8 @@ fn ingest_rejects_invalid_json_payload() {
     let db_path = dir.path().join("invalid-json.db");
     let db_str = db_path.to_string_lossy().to_string();
 
+    migrate_db(&db_str);
+
     let bad_file = dir.path().join("bad.json");
     fs::write(&bad_file, "{not-json}").unwrap();
     let bad_file_str = bad_file.to_string_lossy().to_string();
@@ -484,6 +499,7 @@ fn ingest_meal_rated_requires_cuisine() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("missing-cuisine.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -542,6 +558,7 @@ fn ingest_expense_logged_requires_category() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("missing-category.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -603,6 +620,7 @@ fn identity_unlink_then_resolve_fails() {
         .join("identity-unlink.db")
         .to_string_lossy()
         .to_string();
+    migrate_db(&db_str);
 
     let mut create = bin();
     create
@@ -666,6 +684,7 @@ fn topk_orders_by_frequency() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("topk-order.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -748,6 +767,7 @@ fn query_latest_returns_most_recent_event() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("latest.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -836,6 +856,7 @@ fn query_topk_respects_limit() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("topk-limit.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -910,6 +931,7 @@ fn ingest_with_same_idempotency_key_is_ignored() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("idempotent.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -994,6 +1016,7 @@ fn failed_ingest_does_not_insert_event() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("rollback.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -1053,6 +1076,7 @@ fn ingest_expense_logged_updates_spend_category_topk() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("ingest-expense.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
@@ -1127,6 +1151,7 @@ fn query_metric_by_key_and_prefix() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("metric-query.db");
     let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
 
     let mut create_user = bin();
     create_user
