@@ -6,6 +6,10 @@ use clap::{Args, Parser, Subcommand};
 #[command(name = "agent-memory-cli")]
 #[command(about = "Local-first memory CLI scaffold", long_about = None)]
 struct Cli {
+    /// SQLite database path
+    #[arg(long, global = true, default_value = "data/agent-memory.db")]
+    db: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -236,6 +240,16 @@ fn main() {
         Commands::Ingest { command } => commands::todo("ingest", &format!("{:?}", command)),
         Commands::Query { command } => commands::todo("query", &format!("{:?}", command)),
         Commands::State { command } => commands::todo("state", &format!("{:?}", command)),
-        Commands::Admin { command } => commands::todo("admin", &format!("{:?}", command)),
+        Commands::Admin { command } => match command {
+            AdminCommands::Migrate => {
+                if let Err(e) = commands::admin_migrate(&cli.db) {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            }
+            AdminCommands::Reindex => commands::todo("admin", "reindex"),
+            AdminCommands::Compact => commands::todo("admin", "compact"),
+            AdminCommands::Archive => commands::todo("admin", "archive"),
+        },
     }
 }

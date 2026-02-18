@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use tempfile::tempdir;
 
 fn bin() -> Command {
     Command::new(assert_cmd::cargo::cargo_bin!("agent-memory-cli"))
@@ -147,4 +148,19 @@ fn user_create_with_name_runs() {
         .stdout(predicate::str::contains(
             "TODO: implement user::create name=Yongseong",
         ));
+}
+
+#[test]
+fn admin_migrate_creates_sqlite_db_file() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("agent-memory-test.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut cmd = bin();
+    cmd.args(["--db", &db_str, "admin", "migrate"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("migrated schema to"));
+
+    assert!(db_path.exists());
 }
