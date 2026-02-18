@@ -183,73 +183,73 @@ enum AdminCommands {
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Doctor => commands::doctor(),
+    let result = match cli.command {
+        Commands::Doctor => {
+            commands::doctor();
+            Ok(())
+        }
         Commands::User { command } => match command {
-            UserCommands::Create(args) => {
-                commands::todo("user", &format!("create name={}", args.name))
-            }
-            UserCommands::List => commands::todo("user", "list"),
-            UserCommands::Show(args) => commands::todo("user", &format!("show uid={}", args.uid)),
-            UserCommands::Update(args) => commands::todo(
-                "user",
-                &format!("update uid={} name={}", args.uid, args.name),
-            ),
+            UserCommands::Create(args) => commands::user_create(&cli.db, &args.name),
+            UserCommands::List => commands::user_list(&cli.db),
+            UserCommands::Show(args) => commands::user_show(&cli.db, &args.uid),
+            UserCommands::Update(args) => commands::user_update(&cli.db, &args.uid, &args.name),
         },
         Commands::Identity { command } => match command {
-            IdentityCommands::Link(args) => commands::todo(
-                "identity",
-                &format!(
-                    "link uid={} channel={} channel_user_id={}",
-                    args.uid, args.channel, args.channel_user_id
-                ),
-            ),
-            IdentityCommands::Resolve(args) => commands::todo(
-                "identity",
-                &format!(
-                    "resolve channel={} channel_user_id={}",
-                    args.channel, args.channel_user_id
-                ),
-            ),
-            IdentityCommands::Unlink(args) => commands::todo(
-                "identity",
-                &format!(
-                    "unlink channel={} channel_user_id={}",
-                    args.channel, args.channel_user_id
-                ),
-            ),
+            IdentityCommands::Link(args) => {
+                commands::identity_link(&cli.db, &args.uid, &args.channel, &args.channel_user_id)
+            }
+            IdentityCommands::Resolve(args) => {
+                commands::identity_resolve(&cli.db, &args.channel, &args.channel_user_id)
+            }
+            IdentityCommands::Unlink(args) => {
+                commands::identity_unlink(&cli.db, &args.channel, &args.channel_user_id)
+            }
         },
         Commands::Scope { command } => match command {
-            ScopeCommands::Create(args) => commands::todo(
-                "scope",
-                &format!("create id={} type={}", args.scope_id, args.scope_type),
-            ),
-            ScopeCommands::AddMember(args) => commands::todo(
-                "scope",
-                &format!(
-                    "add-member id={} uid={} role={}",
-                    args.scope_id, args.uid, args.role
-                ),
-            ),
-            ScopeCommands::List => commands::todo("scope", "list"),
-            ScopeCommands::Members(args) => {
-                commands::todo("scope", &format!("members id={}", args.scope_id))
+            ScopeCommands::Create(args) => {
+                commands::scope_create(&cli.db, &args.scope_id, &args.scope_type)
             }
+            ScopeCommands::AddMember(args) => {
+                commands::scope_add_member(&cli.db, &args.scope_id, &args.uid, &args.role)
+            }
+            ScopeCommands::List => commands::scope_list(&cli.db),
+            ScopeCommands::Members(args) => commands::scope_members(&cli.db, &args.scope_id),
         },
-        Commands::Schema { command } => commands::todo("schema", &format!("{:?}", command)),
-        Commands::Ingest { command } => commands::todo("ingest", &format!("{:?}", command)),
-        Commands::Query { command } => commands::todo("query", &format!("{:?}", command)),
-        Commands::State { command } => commands::todo("state", &format!("{:?}", command)),
+        Commands::Schema { command } => {
+            commands::todo("schema", &format!("{:?}", command));
+            Ok(())
+        }
+        Commands::Ingest { command } => {
+            commands::todo("ingest", &format!("{:?}", command));
+            Ok(())
+        }
+        Commands::Query { command } => {
+            commands::todo("query", &format!("{:?}", command));
+            Ok(())
+        }
+        Commands::State { command } => {
+            commands::todo("state", &format!("{:?}", command));
+            Ok(())
+        }
         Commands::Admin { command } => match command {
-            AdminCommands::Migrate => {
-                if let Err(e) = commands::admin_migrate(&cli.db) {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
+            AdminCommands::Migrate => commands::admin_migrate(&cli.db),
+            AdminCommands::Reindex => {
+                commands::todo("admin", "reindex");
+                Ok(())
             }
-            AdminCommands::Reindex => commands::todo("admin", "reindex"),
-            AdminCommands::Compact => commands::todo("admin", "compact"),
-            AdminCommands::Archive => commands::todo("admin", "archive"),
+            AdminCommands::Compact => {
+                commands::todo("admin", "compact");
+                Ok(())
+            }
+            AdminCommands::Archive => {
+                commands::todo("admin", "archive");
+                Ok(())
+            }
         },
+    };
+
+    if let Err(e) = result {
+        eprintln!("{e}");
+        std::process::exit(1);
     }
 }

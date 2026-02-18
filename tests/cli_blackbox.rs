@@ -142,13 +142,18 @@ fn scope_create_requires_id_and_type() {
 
 #[test]
 fn user_create_with_name_runs() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("create-user.db")
+        .to_string_lossy()
+        .to_string();
+
     let mut cmd = bin();
-    cmd.args(["user", "create", "--name", "Yongseong"])
+    cmd.args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "TODO: implement user::create name=Yongseong",
-        ));
+        .stdout(predicate::str::contains("created user uid="));
 }
 
 #[test]
@@ -233,4 +238,137 @@ fn db_flag_works_after_subcommand_too() {
         .success();
 
     assert!(db_path.exists());
+}
+
+#[test]
+fn user_create_then_list_includes_user() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("list-user.db")
+        .to_string_lossy()
+        .to_string();
+
+    let mut create = bin();
+    create
+        .args(["--db", &db_str, "user", "create", "--name", "Irene"])
+        .assert()
+        .success();
+
+    let mut list = bin();
+    list.args(["--db", &db_str, "user", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("name=Irene"));
+}
+
+#[test]
+fn identity_link_and_resolve_flow() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("identity-flow.db")
+        .to_string_lossy()
+        .to_string();
+
+    let mut create = bin();
+    create
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(dir.path().join("identity-flow.db")).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut link = bin();
+    link.args([
+        "--db",
+        &db_str,
+        "identity",
+        "link",
+        "--uid",
+        &uid,
+        "--channel",
+        "telegram",
+        "--channel-user-id",
+        "7992342261",
+    ])
+    .assert()
+    .success();
+
+    let mut resolve = bin();
+    resolve
+        .args([
+            "--db",
+            &db_str,
+            "identity",
+            "resolve",
+            "--channel",
+            "telegram",
+            "--channel-user-id",
+            "7992342261",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!("resolved uid={uid}")));
+}
+
+#[test]
+fn scope_create_add_member_and_list_members_flow() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("scope-flow.db")
+        .to_string_lossy()
+        .to_string();
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(dir.path().join("scope-flow.db")).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "shared:couple",
+            "--type",
+            "shared",
+        ])
+        .assert()
+        .success();
+
+    let mut add_member = bin();
+    add_member
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "add-member",
+            "--id",
+            "shared:couple",
+            "--uid",
+            &uid,
+        ])
+        .assert()
+        .success();
+
+    let mut members = bin();
+    members
+        .args(["--db", &db_str, "scope", "members", "--id", "shared:couple"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!("uid={uid}")));
 }
