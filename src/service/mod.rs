@@ -1,4 +1,6 @@
 pub mod identity_service;
+pub mod ingest_service;
+pub mod query_service;
 pub mod scope_service;
 pub mod user_service;
 

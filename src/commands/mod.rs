@@ -1,7 +1,9 @@
 use crate::db;
 use crate::domain::NoopObserver;
-use crate::service::{identity_service, scope_service, user_service};
-use rusqlite::{params, Connection};
+use crate::service::{
+    identity_service, ingest_service, query_service, scope_service, user_service,
+};
+use rusqlite::Connection;
 use serde_json::Value;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -200,136 +202,30 @@ pub fn ingest_event(
     let payload: Value =
         serde_json::from_str(&raw).map_err(|e| format!("invalid json payload: {e}"))?;
 
-    let derived = if event_type == "meal.rated" {
-        let cuisine = payload
-            .get("cuisine")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "meal.rated requires string field: cuisine".to_string())?;
-        Some(("food_pref", cuisine.to_string()))
-    } else if event_type == "expense.logged" {
-        let category = payload
-            .get("category")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "expense.logged requires string field: category".to_string())?;
-        Some(("spend_category", category.to_string()))
-    } else if event_type == "request.logged" {
-        let pattern = payload
-            .get("pattern")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "request.logged requires string field: pattern".to_string())?;
-        Some(("request_pattern", pattern.to_string()))
-    } else {
-        None
-    };
-
-    let tx = conn
-        .transaction()
-        .map_err(|e| format!("failed to begin tx: {e}"))?;
-
-    if let Some(key) = idempotency_key {
-        let exists: i64 = tx
-            .query_row(
-                "SELECT COUNT(1) FROM events WHERE scope_id = ?1 AND uid = ?2 AND idempotency_key = ?3",
-                params![scope_id, uid, key],
-                |row| row.get(0),
-            )
-            .map_err(|e| format!("failed idempotency check: {e}"))?;
-        if exists > 0 {
-            tx.commit()
-                .map_err(|e| format!("failed to commit tx: {e}"))?;
-            println!("duplicate event ignored idempotency_key={key}");
-            return Ok(());
-        }
-    }
-
     let event_id = new_id("evt");
     let now = now_ts();
-    tx.execute(
-        "INSERT INTO events (event_id, uid, scope_id, event_type, event_ts, payload_json, idempotency_key, schema_version, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '1', ?5)",
-        params![event_id, uid, scope_id, event_type, now, payload.to_string(), idempotency_key],
-    )
-    .map_err(|e| format!("failed to insert event: {e}"))?;
 
-    if let Some((topic, item)) = derived {
-        upsert_topk_counter(&tx, scope_id, uid, topic, &item, 1.0)?;
-        rebuild_topk(&tx, scope_id, uid, topic)?;
-    }
-
-    tx.commit()
-        .map_err(|e| format!("failed to commit tx: {e}"))?;
-
-    println!("ingested event id={event_id} type={event_type}");
-    Ok(())
-}
-
-fn upsert_topk_counter(
-    conn: &rusqlite::Transaction<'_>,
-    scope_id: &str,
-    uid: &str,
-    topic: &str,
-    item: &str,
-    delta: f64,
-) -> Result<(), String> {
-    conn.execute(
-        "INSERT INTO metrics (scope_id, uid, metric_key, metric_value, metric_json, updated_at)
-         VALUES (?1, ?2, ?3, ?4, NULL, ?5)
-         ON CONFLICT(scope_id, uid, metric_key)
-         DO UPDATE SET metric_value = COALESCE(metrics.metric_value, 0) + excluded.metric_value, updated_at = excluded.updated_at",
-        params![scope_id, uid, format!("counter:{topic}:{item}"), delta, now_ts()],
-    )
-    .map_err(|e| format!("failed to update counter: {e}"))?;
-    Ok(())
-}
-
-fn rebuild_topk(
-    conn: &rusqlite::Transaction<'_>,
-    scope_id: &str,
-    uid: &str,
-    topic: &str,
-) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM topk WHERE scope_id = ?1 AND uid = ?2 AND topic = ?3",
-        params![scope_id, uid, topic],
-    )
-    .map_err(|e| format!("failed to clear topk: {e}"))?;
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT metric_key, COALESCE(metric_value, 0) as score
-             FROM metrics
-             WHERE scope_id = ?1 AND uid = ?2 AND metric_key LIKE ?3
-             ORDER BY score DESC, metric_key ASC
-             LIMIT 10",
-        )
-        .map_err(|e| format!("failed to prepare topk query: {e}"))?;
-
-    let like = format!("counter:{topic}:%");
-    let rows = stmt
-        .query_map(params![scope_id, uid, like], |row| {
-            let key: String = row.get(0)?;
-            let score: f64 = row.get(1)?;
-            Ok((key, score))
-        })
-        .map_err(|e| format!("failed to load topk counters: {e}"))?;
-
-    for (idx, row) in rows.enumerate() {
-        let (key, score) = row.map_err(|e| format!("failed row: {e}"))?;
-        let item_key = key.splitn(3, ':').nth(2).unwrap_or_default().to_string();
-        conn.execute(
-            "INSERT INTO topk (scope_id, uid, topic, rank, item_key, weight, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                scope_id,
-                uid,
-                topic,
-                (idx + 1) as i64,
-                item_key,
-                score,
-                now_ts()
-            ],
-        )
-        .map_err(|e| format!("failed to insert topk: {e}"))?;
+    match ingest_service::ingest(
+        &mut conn,
+        ingest_service::IngestInput {
+            uid,
+            scope_id,
+            event_type,
+            payload: &payload,
+            idempotency_key,
+            event_id: &event_id,
+            now: &now,
+        },
+    )? {
+        ingest_service::IngestOutcome::Duplicate { idempotency_key } => {
+            println!("duplicate event ignored idempotency_key={idempotency_key}");
+        }
+        ingest_service::IngestOutcome::Inserted {
+            event_id,
+            event_type,
+        } => {
+            println!("ingested event id={event_id} type={event_type}");
+        }
     }
 
     Ok(())
@@ -337,26 +233,9 @@ fn rebuild_topk(
 
 pub fn query_latest(db_path: &str, uid: &str, scope_id: &str) -> Result<(), String> {
     let conn = open_db_checked(db_path)?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT event_id, event_type, event_ts FROM events
-             WHERE uid = ?1 AND scope_id = ?2
-             ORDER BY rowid DESC
-             LIMIT 1",
-        )
-        .map_err(|e| format!("failed to prepare latest query: {e}"))?;
-
-    let mut rows = stmt
-        .query(params![uid, scope_id])
-        .map_err(|e| format!("failed latest query: {e}"))?;
-
-    if let Some(row) = rows.next().map_err(|e| format!("failed row read: {e}"))? {
-        let event_id: String = row.get(0).map_err(|e| format!("failed col read: {e}"))?;
-        let event_type: String = row.get(1).map_err(|e| format!("failed col read: {e}"))?;
-        let event_ts: String = row.get(2).map_err(|e| format!("failed col read: {e}"))?;
+    if let Some((event_id, event_type, event_ts)) = query_service::latest(&conn, uid, scope_id)? {
         println!("latest event_id={event_id} type={event_type} ts={event_ts}");
     }
-
     Ok(())
 }
 
@@ -370,53 +249,10 @@ pub fn query_metric(
     if key.is_none() && prefix.is_none() {
         return Err("query metric requires either --key or --prefix".to_string());
     }
-
     let conn = open_db_checked(db_path)?;
-
-    if let Some(key) = key {
-        let mut stmt = conn
-            .prepare(
-                "SELECT metric_key, COALESCE(metric_value, 0), COALESCE(metric_json, '')
-                 FROM metrics
-                 WHERE scope_id = ?1 AND uid = ?2 AND metric_key = ?3",
-            )
-            .map_err(|e| format!("failed to prepare metric query: {e}"))?;
-        let mut rows = stmt
-            .query(params![scope_id, uid, key])
-            .map_err(|e| format!("failed to run metric query: {e}"))?;
-        if let Some(row) = rows.next().map_err(|e| format!("failed row read: {e}"))? {
-            let k: String = row.get(0).map_err(|e| format!("failed col read: {e}"))?;
-            let v: f64 = row.get(1).map_err(|e| format!("failed col read: {e}"))?;
-            let j: String = row.get(2).map_err(|e| format!("failed col read: {e}"))?;
-            println!("metric key={k} value={v} json={j}");
-        }
+    for (k, v, j) in query_service::metric(&conn, uid, scope_id, key, prefix)? {
+        println!("metric key={k} value={v} json={j}");
     }
-
-    if let Some(prefix) = prefix {
-        let mut stmt = conn
-            .prepare(
-                "SELECT metric_key, COALESCE(metric_value, 0), COALESCE(metric_json, '')
-                 FROM metrics
-                 WHERE scope_id = ?1 AND uid = ?2 AND metric_key LIKE ?3
-                 ORDER BY metric_key ASC",
-            )
-            .map_err(|e| format!("failed to prepare metric prefix query: {e}"))?;
-        let like = format!("{prefix}%");
-        let rows = stmt
-            .query_map(params![scope_id, uid, like], |row| {
-                let k: String = row.get(0)?;
-                let v: f64 = row.get(1)?;
-                let j: String = row.get(2)?;
-                Ok((k, v, j))
-            })
-            .map_err(|e| format!("failed to run metric prefix query: {e}"))?;
-
-        for row in rows {
-            let (k, v, j) = row.map_err(|e| format!("failed row read: {e}"))?;
-            println!("metric key={k} value={v} json={j}");
-        }
-    }
-
     Ok(())
 }
 
@@ -428,28 +264,8 @@ pub fn query_topk(
     limit: usize,
 ) -> Result<(), String> {
     let conn = open_db_checked(db_path)?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT rank, item_key, weight FROM topk
-             WHERE scope_id = ?1 AND uid = ?2 AND topic = ?3
-             ORDER BY rank ASC
-             LIMIT ?4",
-        )
-        .map_err(|e| format!("failed to prepare topk query: {e}"))?;
-
-    let rows = stmt
-        .query_map(params![scope_id, uid, topic, limit as i64], |row| {
-            let rank: i64 = row.get(0)?;
-            let item: String = row.get(1)?;
-            let weight: f64 = row.get(2)?;
-            Ok((rank, item, weight))
-        })
-        .map_err(|e| format!("failed topk query: {e}"))?;
-
-    for row in rows {
-        let (rank, item, weight) = row.map_err(|e| format!("failed row read: {e}"))?;
+    for (rank, item, weight) in query_service::topk(&conn, uid, scope_id, topic, limit)? {
         println!("rank={rank} item={item} weight={weight}");
     }
-
     Ok(())
 }
