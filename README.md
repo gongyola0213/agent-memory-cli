@@ -56,3 +56,10 @@ Scaffolding phase.
 - Install guide: `INSTALL.md`
 - Versioning/release policy: `VERSIONING.md`
 - Tag `v*` to trigger cross-platform release artifacts (Linux/macOS/Windows).
+
+## Automated Versioning
+
+- Prefix-based version bump workflow: `.github/workflows/version-bump.yml`
+- Scripts:
+  - `scripts/next-version.sh`
+  - `scripts/release-bump.sh`
