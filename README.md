@@ -50,3 +50,9 @@ Scaffolding phase.
 
 - See `docs/BRANCH_STRATEGY.md` for branch/PR/review loop policy.
 - Use `.github/pull_request_template.md` for every PR.
+
+## Release & Install
+
+- Install guide: `INSTALL.md`
+- Versioning/release policy: `VERSIONING.md`
+- Tag `v*` to trigger cross-platform release artifacts (Linux/macOS/Windows).
