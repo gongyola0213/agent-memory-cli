@@ -1,4 +1,8 @@
 mod commands;
+mod db;
+mod domain;
+mod repository;
+mod service;
 
 use clap::{Args, Parser, Subcommand};
 
