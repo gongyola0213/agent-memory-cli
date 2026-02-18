@@ -212,6 +212,12 @@ pub fn ingest_event(
             .and_then(|v| v.as_str())
             .ok_or_else(|| "expense.logged requires string field: category".to_string())?;
         Some(("spend_category", category.to_string()))
+    } else if event_type == "request.logged" {
+        let pattern = payload
+            .get("pattern")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "request.logged requires string field: pattern".to_string())?;
+        Some(("request_pattern", pattern.to_string()))
     } else {
         None
     };
