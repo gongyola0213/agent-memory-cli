@@ -172,6 +172,8 @@ struct IngestEventArgs {
     event_type: String,
     #[arg(long = "file")]
     file: String,
+    #[arg(long = "idempotency-key")]
+    idempotency_key: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -262,6 +264,7 @@ fn main() {
                 &args.scope_id,
                 &args.event_type,
                 &args.file,
+                args.idempotency_key.as_deref(),
             ),
             IngestCommands::Batch => {
                 commands::todo("ingest", "batch");

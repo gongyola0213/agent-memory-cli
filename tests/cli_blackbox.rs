@@ -904,3 +904,146 @@ fn query_topk_respects_limit() {
     .success()
     .stdout(predicate::str::contains("rank=1").and(predicate::str::contains("rank=2").not()));
 }
+
+#[test]
+fn ingest_with_same_idempotency_key_is_ignored() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("idempotent.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let event_file = dir.path().join("meal.json");
+    fs::write(&event_file, r#"{"cuisine":"korean"}"#).unwrap();
+    let event_file_str = event_file.to_string_lossy().to_string();
+
+    let mut first = bin();
+    first
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &event_file_str,
+            "--idempotency-key",
+            "k1",
+        ])
+        .assert()
+        .success();
+
+    let mut second = bin();
+    second
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &event_file_str,
+            "--idempotency-key",
+            "k1",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("duplicate event ignored"));
+
+    let event_count: i64 = conn
+        .query_row("SELECT COUNT(1) FROM events", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(event_count, 1);
+}
+
+#[test]
+fn failed_ingest_does_not_insert_event() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("rollback.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let bad = dir.path().join("bad-meal.json");
+    fs::write(&bad, r#"{"rating":5}"#).unwrap();
+
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &bad.to_string_lossy(),
+        ])
+        .assert()
+        .failure();
+
+    let event_count: i64 = conn
+        .query_row("SELECT COUNT(1) FROM events", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(event_count, 0);
+}

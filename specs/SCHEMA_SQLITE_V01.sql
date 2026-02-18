@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json TEXT NOT NULL,
   source_channel TEXT,
   source_message_id TEXT,
+  idempotency_key TEXT,
   schema_version TEXT NOT NULL DEFAULT '1',
   created_at TEXT NOT NULL,
   FOREIGN KEY(uid) REFERENCES users(uid) ON DELETE CASCADE,
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_uid_ts ON events(uid, event_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_scope_ts ON events(scope_id, event_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(event_type, event_ts DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_idempotency ON events(scope_id, uid, idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS state (
   scope_id TEXT NOT NULL,

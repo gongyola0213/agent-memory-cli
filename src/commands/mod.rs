@@ -20,6 +20,11 @@ pub fn admin_migrate(db_path: &str) -> Result<(), String> {
     let schema_sql = include_str!("../../specs/SCHEMA_SQLITE_V01.sql");
     conn.execute_batch(schema_sql)
         .map_err(|e| format!("migration failed: {e}"))?;
+    let _ = conn.execute("ALTER TABLE events ADD COLUMN idempotency_key TEXT", []);
+    let _ = conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_idempotency ON events(scope_id, uid, idempotency_key) WHERE idempotency_key IS NOT NULL",
+        [],
+    );
     println!("migrated schema to {db_path}");
     Ok(())
 }
@@ -176,44 +181,72 @@ pub fn ingest_event(
     scope_id: &str,
     event_type: &str,
     file: &str,
+    idempotency_key: Option<&str>,
 ) -> Result<(), String> {
-    let conn = open_and_migrate(db_path)?;
+    let mut conn = open_and_migrate(db_path)?;
     let raw = fs::read_to_string(file).map_err(|e| format!("failed to read event file: {e}"))?;
     let payload: Value =
         serde_json::from_str(&raw).map_err(|e| format!("invalid json payload: {e}"))?;
 
-    let event_id = new_id("evt");
-    let now = now_ts();
-    conn.execute(
-        "INSERT INTO events (event_id, uid, scope_id, event_type, event_ts, payload_json, schema_version, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, '1', ?5)",
-        params![event_id, uid, scope_id, event_type, now, payload.to_string()],
-    )
-    .map_err(|e| format!("failed to insert event: {e}"))?;
-
-    if event_type == "meal.rated" {
+    let derived = if event_type == "meal.rated" {
         let cuisine = payload
             .get("cuisine")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "meal.rated requires string field: cuisine".to_string())?;
-        upsert_topk_counter(&conn, scope_id, uid, "food_pref", cuisine, 1.0)?;
+        Some(("food_pref", cuisine.to_string()))
     } else if event_type == "expense.logged" {
         let category = payload
             .get("category")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "expense.logged requires string field: category".to_string())?;
-        upsert_topk_counter(&conn, scope_id, uid, "spend_category", category, 1.0)?;
+        Some(("spend_category", category.to_string()))
+    } else {
+        None
+    };
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("failed to begin tx: {e}"))?;
+
+    if let Some(key) = idempotency_key {
+        let exists: i64 = tx
+            .query_row(
+                "SELECT COUNT(1) FROM events WHERE scope_id = ?1 AND uid = ?2 AND idempotency_key = ?3",
+                params![scope_id, uid, key],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("failed idempotency check: {e}"))?;
+        if exists > 0 {
+            tx.commit()
+                .map_err(|e| format!("failed to commit tx: {e}"))?;
+            println!("duplicate event ignored idempotency_key={key}");
+            return Ok(());
+        }
     }
 
-    rebuild_topk(&conn, scope_id, uid, "food_pref")?;
-    rebuild_topk(&conn, scope_id, uid, "spend_category")?;
+    let event_id = new_id("evt");
+    let now = now_ts();
+    tx.execute(
+        "INSERT INTO events (event_id, uid, scope_id, event_type, event_ts, payload_json, idempotency_key, schema_version, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '1', ?5)",
+        params![event_id, uid, scope_id, event_type, now, payload.to_string(), idempotency_key],
+    )
+    .map_err(|e| format!("failed to insert event: {e}"))?;
+
+    if let Some((topic, item)) = derived {
+        upsert_topk_counter(&tx, scope_id, uid, topic, &item, 1.0)?;
+        rebuild_topk(&tx, scope_id, uid, topic)?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("failed to commit tx: {e}"))?;
 
     println!("ingested event id={event_id} type={event_type}");
     Ok(())
 }
 
 fn upsert_topk_counter(
-    conn: &Connection,
+    conn: &rusqlite::Transaction<'_>,
     scope_id: &str,
     uid: &str,
     topic: &str,
@@ -231,7 +264,12 @@ fn upsert_topk_counter(
     Ok(())
 }
 
-fn rebuild_topk(conn: &Connection, scope_id: &str, uid: &str, topic: &str) -> Result<(), String> {
+fn rebuild_topk(
+    conn: &rusqlite::Transaction<'_>,
+    scope_id: &str,
+    uid: &str,
+    topic: &str,
+) -> Result<(), String> {
     conn.execute(
         "DELETE FROM topk WHERE scope_id = ?1 AND uid = ?2 AND topic = ?3",
         params![scope_id, uid, topic],
