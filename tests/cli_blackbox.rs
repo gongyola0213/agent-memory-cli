@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use rusqlite::Connection;
+use std::fs;
 use tempfile::tempdir;
 
 fn bin() -> Command {
@@ -371,4 +372,79 @@ fn scope_create_add_member_and_list_members_flow() {
         .assert()
         .success()
         .stdout(predicate::str::contains(format!("uid={uid}")));
+}
+
+#[test]
+fn ingest_meal_rated_updates_food_topk() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("ingest-food.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let event_file = dir.path().join("meal.json");
+    fs::write(&event_file, r#"{"cuisine":"korean"}"#).unwrap();
+    let event_file_str = event_file.to_string_lossy().to_string();
+
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &event_file_str,
+        ])
+        .assert()
+        .success();
+
+    let mut topk = bin();
+    topk.args([
+        "--db",
+        &db_str,
+        "query",
+        "topk",
+        "--uid",
+        &uid,
+        "--scope",
+        "private:test",
+        "--topic",
+        "food_pref",
+        "--limit",
+        "3",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("item=korean"));
 }

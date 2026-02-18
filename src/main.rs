@@ -158,15 +158,47 @@ enum SchemaCommands {
 
 #[derive(Subcommand, Debug)]
 enum IngestCommands {
-    Event,
+    Event(IngestEventArgs),
     Batch,
+}
+
+#[derive(Args, Debug)]
+struct IngestEventArgs {
+    #[arg(long)]
+    uid: String,
+    #[arg(long = "scope")]
+    scope_id: String,
+    #[arg(long = "type")]
+    event_type: String,
+    #[arg(long = "file")]
+    file: String,
 }
 
 #[derive(Subcommand, Debug)]
 enum QueryCommands {
-    Latest,
+    Latest(QueryLatestArgs),
     Metric,
-    Topk,
+    Topk(QueryTopkArgs),
+}
+
+#[derive(Args, Debug)]
+struct QueryLatestArgs {
+    #[arg(long)]
+    uid: String,
+    #[arg(long = "scope")]
+    scope_id: String,
+}
+
+#[derive(Args, Debug)]
+struct QueryTopkArgs {
+    #[arg(long)]
+    uid: String,
+    #[arg(long = "scope")]
+    scope_id: String,
+    #[arg(long)]
+    topic: String,
+    #[arg(long, default_value_t = 3)]
+    limit: usize,
 }
 
 #[derive(Subcommand, Debug)]
@@ -223,14 +255,31 @@ fn main() {
             commands::todo("schema", &format!("{:?}", command));
             Ok(())
         }
-        Commands::Ingest { command } => {
-            commands::todo("ingest", &format!("{:?}", command));
-            Ok(())
-        }
-        Commands::Query { command } => {
-            commands::todo("query", &format!("{:?}", command));
-            Ok(())
-        }
+        Commands::Ingest { command } => match command {
+            IngestCommands::Event(args) => commands::ingest_event(
+                &cli.db,
+                &args.uid,
+                &args.scope_id,
+                &args.event_type,
+                &args.file,
+            ),
+            IngestCommands::Batch => {
+                commands::todo("ingest", "batch");
+                Ok(())
+            }
+        },
+        Commands::Query { command } => match command {
+            QueryCommands::Latest(args) => {
+                commands::query_latest(&cli.db, &args.uid, &args.scope_id)
+            }
+            QueryCommands::Metric => {
+                commands::todo("query", "metric");
+                Ok(())
+            }
+            QueryCommands::Topk(args) => {
+                commands::query_topk(&cli.db, &args.uid, &args.scope_id, &args.topic, args.limit)
+            }
+        },
         Commands::State { command } => {
             commands::todo("state", &format!("{:?}", command));
             Ok(())
