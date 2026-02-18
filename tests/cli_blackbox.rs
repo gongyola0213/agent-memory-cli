@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use rusqlite::Connection;
 use tempfile::tempdir;
 
 fn bin() -> Command {
@@ -161,6 +162,75 @@ fn admin_migrate_creates_sqlite_db_file() {
         .assert()
         .success()
         .stdout(predicate::str::contains("migrated schema to"));
+
+    assert!(db_path.exists());
+}
+
+#[test]
+fn admin_migrate_is_idempotent() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("agent-memory-idempotent.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut first = bin();
+    first
+        .args(["--db", &db_str, "admin", "migrate"])
+        .assert()
+        .success();
+
+    let mut second = bin();
+    second
+        .args(["--db", &db_str, "admin", "migrate"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn admin_migrate_creates_expected_core_tables() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("agent-memory-schema.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut cmd = bin();
+    cmd.args(["--db", &db_str, "admin", "migrate"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db_path).unwrap();
+    let expected = [
+        "users",
+        "user_identities",
+        "scopes",
+        "scope_members",
+        "events",
+        "state",
+        "metrics",
+        "topk",
+        "schema_registry",
+    ];
+
+    for table in expected {
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name = ?1",
+                [table],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(exists, 1, "expected table {table} to exist");
+    }
+}
+
+#[test]
+fn db_flag_works_after_subcommand_too() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("agent-memory-postfix-flag.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut cmd = bin();
+    cmd.args(["admin", "migrate", "--db", &db_str])
+        .assert()
+        .success();
 
     assert!(db_path.exists());
 }
