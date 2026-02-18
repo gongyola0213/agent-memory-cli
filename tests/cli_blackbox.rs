@@ -1,9 +1,13 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+fn bin() -> Command {
+    Command::new(assert_cmd::cargo::cargo_bin!("agent-memory-cli"))
+}
+
 #[test]
 fn doctor_command_returns_ready_message() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.arg("doctor")
         .assert()
         .success()
@@ -12,7 +16,7 @@ fn doctor_command_returns_ready_message() {
 
 #[test]
 fn top_level_help_includes_spec_command_groups() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.arg("--help").assert().success().stdout(
         predicate::str::contains("user")
             .and(predicate::str::contains("identity"))
@@ -27,7 +31,7 @@ fn top_level_help_includes_spec_command_groups() {
 
 #[test]
 fn user_help_supports_create_list_show_update() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["user", "--help"]).assert().success().stdout(
         predicate::str::contains("create")
             .and(predicate::str::contains("list"))
@@ -38,7 +42,7 @@ fn user_help_supports_create_list_show_update() {
 
 #[test]
 fn identity_help_supports_link_resolve_unlink() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["identity", "--help"]).assert().success().stdout(
         predicate::str::contains("link")
             .and(predicate::str::contains("resolve"))
@@ -48,7 +52,7 @@ fn identity_help_supports_link_resolve_unlink() {
 
 #[test]
 fn scope_help_supports_create_add_member_list_members() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["scope", "--help"]).assert().success().stdout(
         predicate::str::contains("create")
             .and(predicate::str::contains("add-member"))
@@ -59,7 +63,7 @@ fn scope_help_supports_create_add_member_list_members() {
 
 #[test]
 fn schema_help_supports_register_list_validate() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["schema", "--help"]).assert().success().stdout(
         predicate::str::contains("register")
             .and(predicate::str::contains("list"))
@@ -69,7 +73,7 @@ fn schema_help_supports_register_list_validate() {
 
 #[test]
 fn ingest_help_supports_event_and_batch() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["ingest", "--help"])
         .assert()
         .success()
@@ -78,7 +82,7 @@ fn ingest_help_supports_event_and_batch() {
 
 #[test]
 fn query_help_supports_latest_metric_topk() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["query", "--help"]).assert().success().stdout(
         predicate::str::contains("latest")
             .and(predicate::str::contains("metric"))
@@ -88,7 +92,7 @@ fn query_help_supports_latest_metric_topk() {
 
 #[test]
 fn state_help_supports_get_set_delete() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["state", "--help"]).assert().success().stdout(
         predicate::str::contains("get")
             .and(predicate::str::contains("set"))
@@ -98,7 +102,7 @@ fn state_help_supports_get_set_delete() {
 
 #[test]
 fn admin_help_supports_migrate_reindex_compact_archive() {
-    let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
+    let mut cmd = bin();
     cmd.args(["admin", "--help"]).assert().success().stdout(
         predicate::str::contains("migrate")
             .and(predicate::str::contains("reindex"))

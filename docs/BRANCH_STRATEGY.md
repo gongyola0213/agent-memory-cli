@@ -66,3 +66,18 @@ After consensus + CI green:
   - `pre-commit`: fmt + clippy
   - `pre-push`: check + test
   - `commit-msg`: commit message format guard
+
+## Rust Toolchain Bootstrap
+Before local hooks/CI parity checks, install Rust toolchain:
+
+```bash
+curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+source "$HOME/.cargo/env"
+rustup component add rustfmt clippy
+```
+
+Then enable hooks:
+
+```bash
+git config core.hooksPath .githooks
+```

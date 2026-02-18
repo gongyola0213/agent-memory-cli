@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f "$HOME/.cargo/env" ]; then
+  . "$HOME/.cargo/env"
+fi
+
 echo "[pre-push] cargo check --all-targets --all-features"
 cargo check --all-targets --all-features
 
