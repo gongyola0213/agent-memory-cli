@@ -285,7 +285,7 @@ pub fn query_latest(db_path: &str, uid: &str, scope_id: &str) -> Result<(), Stri
         .prepare(
             "SELECT event_id, event_type, event_ts FROM events
              WHERE uid = ?1 AND scope_id = ?2
-             ORDER BY event_ts DESC, created_at DESC
+             ORDER BY rowid DESC
              LIMIT 1",
         )
         .map_err(|e| format!("failed to prepare latest query: {e}"))?;
