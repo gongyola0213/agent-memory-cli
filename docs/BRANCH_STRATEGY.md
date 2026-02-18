@@ -57,3 +57,12 @@ After consensus + CI green:
    - PR link
    - key changes
    - follow-ups (if any)
+
+## Git Hooks
+- Repository hooks are versioned in `.githooks/`.
+- Enable with:
+  - `git config core.hooksPath .githooks`
+- Included hooks:
+  - `pre-commit`: fmt + clippy
+  - `pre-push`: check + test
+  - `commit-msg`: commit message format guard
