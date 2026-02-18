@@ -38,3 +38,10 @@ make test
 ## Status
 
 Scaffolding phase.
+
+## Specifications
+
+- `specs/ARCHITECTURE.md`
+- `specs/CLI_SPEC.md`
+- `specs/SCHEMA_SQLITE_V01.sql`
+- `specs/ROADMAP.md`
