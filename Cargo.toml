@@ -9,6 +9,7 @@ repository = "https://github.com/gongyola0213/agent-memory-cli"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
+serde_json = "1"
 
 [dev-dependencies]
 assert_cmd = "2"
