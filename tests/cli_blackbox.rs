@@ -1248,3 +1248,137 @@ fn query_metric_requires_key_or_prefix() {
             "query metric requires either --key or --prefix",
         ));
 }
+
+#[test]
+fn ingest_request_logged_updates_request_pattern_topk() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("request-pattern.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let event_file = dir.path().join("request.json");
+    fs::write(&event_file, r#"{"pattern":"restaurant_reco"}"#).unwrap();
+
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "request.logged",
+            "--file",
+            &event_file.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut topk = bin();
+    topk.args([
+        "--db",
+        &db_str,
+        "query",
+        "topk",
+        "--uid",
+        &uid,
+        "--scope",
+        "private:test",
+        "--topic",
+        "request_pattern",
+        "--limit",
+        "3",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("item=restaurant_reco"));
+}
+
+#[test]
+fn ingest_request_logged_requires_pattern() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("request-missing-pattern.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let event_file = dir.path().join("request-bad.json");
+    fs::write(&event_file, r#"{"foo":"bar"}"#).unwrap();
+
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "request.logged",
+            "--file",
+            &event_file.to_string_lossy(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "request.logged requires string field: pattern",
+        ));
+}
