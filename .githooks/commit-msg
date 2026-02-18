@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MSG_FILE="$1"
+MSG="$(head -n1 "$MSG_FILE" | tr -d '\r')"
+
+# Conventional-ish format: type(scope): subject  OR type: subject
+if [[ ! "$MSG" =~ ^(feat|fix|docs|style|refactor|test|chore)(\([a-z0-9._/-]+\))?:\ .+ ]]; then
+  echo "[commit-msg] Invalid commit message format."
+  echo "Expected: type(scope): subject  OR  type: subject"
+  echo "Allowed types: feat|fix|docs|style|refactor|test|chore"
+  echo "Got: $MSG"
+  exit 1
+fi

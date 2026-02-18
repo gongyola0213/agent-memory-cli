@@ -45,3 +45,8 @@ Scaffolding phase.
 - `specs/CLI_SPEC.md`
 - `specs/SCHEMA_SQLITE_V01.sql`
 - `specs/ROADMAP.md`
+
+## Branch Strategy
+
+- See `docs/BRANCH_STRATEGY.md` for branch/PR/review loop policy.
+- Use `.github/pull_request_template.md` for every PR.
