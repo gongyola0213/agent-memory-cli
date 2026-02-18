@@ -70,9 +70,10 @@ fn schema_help_supports_register_list_validate() {
 #[test]
 fn ingest_help_supports_event_and_batch() {
     let mut cmd = Command::cargo_bin("agent-memory-cli").unwrap();
-    cmd.args(["ingest", "--help"]).assert().success().stdout(
-        predicate::str::contains("event").and(predicate::str::contains("batch")),
-    );
+    cmd.args(["ingest", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("event").and(predicate::str::contains("batch")));
 }
 
 #[test]
