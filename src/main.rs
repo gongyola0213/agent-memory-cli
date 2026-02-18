@@ -179,7 +179,7 @@ struct IngestEventArgs {
 #[derive(Subcommand, Debug)]
 enum QueryCommands {
     Latest(QueryLatestArgs),
-    Metric,
+    Metric(QueryMetricArgs),
     Topk(QueryTopkArgs),
 }
 
@@ -189,6 +189,18 @@ struct QueryLatestArgs {
     uid: String,
     #[arg(long = "scope")]
     scope_id: String,
+}
+
+#[derive(Args, Debug)]
+struct QueryMetricArgs {
+    #[arg(long)]
+    uid: String,
+    #[arg(long = "scope")]
+    scope_id: String,
+    #[arg(long = "key")]
+    key: Option<String>,
+    #[arg(long = "prefix")]
+    prefix: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -275,10 +287,13 @@ fn main() {
             QueryCommands::Latest(args) => {
                 commands::query_latest(&cli.db, &args.uid, &args.scope_id)
             }
-            QueryCommands::Metric => {
-                commands::todo("query", "metric");
-                Ok(())
-            }
+            QueryCommands::Metric(args) => commands::query_metric(
+                &cli.db,
+                &args.uid,
+                &args.scope_id,
+                args.key.as_deref(),
+                args.prefix.as_deref(),
+            ),
             QueryCommands::Topk(args) => {
                 commands::query_topk(&cli.db, &args.uid, &args.scope_id, &args.topic, args.limit)
             }

@@ -1047,3 +1047,179 @@ fn failed_ingest_does_not_insert_event() {
         .unwrap();
     assert_eq!(event_count, 0);
 }
+
+#[test]
+fn ingest_expense_logged_updates_spend_category_topk() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("ingest-expense.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let event_file = dir.path().join("expense.json");
+    fs::write(&event_file, r#"{"category":"coffee"}"#).unwrap();
+
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "expense.logged",
+            "--file",
+            &event_file.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut topk = bin();
+    topk.args([
+        "--db",
+        &db_str,
+        "query",
+        "topk",
+        "--uid",
+        &uid,
+        "--scope",
+        "private:test",
+        "--topic",
+        "spend_category",
+        "--limit",
+        "3",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("item=coffee"));
+}
+
+#[test]
+fn query_metric_by_key_and_prefix() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("metric-query.db");
+    let db_str = db_path.to_string_lossy().to_string();
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Yongseong"])
+        .assert()
+        .success();
+
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let event_file = dir.path().join("meal.json");
+    fs::write(&event_file, r#"{"cuisine":"korean"}"#).unwrap();
+
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &event_file.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut by_key = bin();
+    by_key
+        .args([
+            "--db",
+            &db_str,
+            "query",
+            "metric",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--key",
+            "counter:food_pref:korean",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("counter:food_pref:korean"));
+
+    let mut by_prefix = bin();
+    by_prefix
+        .args([
+            "--db",
+            &db_str,
+            "query",
+            "metric",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--prefix",
+            "counter:food_pref:",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("counter:food_pref:korean"));
+}
+
+#[test]
+fn query_metric_requires_key_or_prefix() {
+    let mut cmd = bin();
+    cmd.args(["query", "metric", "--uid", "u_1", "--scope", "private:test"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "query metric requires either --key or --prefix",
+        ));
+}

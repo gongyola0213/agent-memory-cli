@@ -342,6 +342,66 @@ pub fn query_latest(db_path: &str, uid: &str, scope_id: &str) -> Result<(), Stri
     Ok(())
 }
 
+pub fn query_metric(
+    db_path: &str,
+    uid: &str,
+    scope_id: &str,
+    key: Option<&str>,
+    prefix: Option<&str>,
+) -> Result<(), String> {
+    if key.is_none() && prefix.is_none() {
+        return Err("query metric requires either --key or --prefix".to_string());
+    }
+
+    let conn = open_and_migrate(db_path)?;
+
+    if let Some(key) = key {
+        let mut stmt = conn
+            .prepare(
+                "SELECT metric_key, COALESCE(metric_value, 0), COALESCE(metric_json, '')
+                 FROM metrics
+                 WHERE scope_id = ?1 AND uid = ?2 AND metric_key = ?3",
+            )
+            .map_err(|e| format!("failed to prepare metric query: {e}"))?;
+        let mut rows = stmt
+            .query(params![scope_id, uid, key])
+            .map_err(|e| format!("failed to run metric query: {e}"))?;
+        if let Some(row) = rows.next().map_err(|e| format!("failed row read: {e}"))? {
+            let k: String = row.get(0).map_err(|e| format!("failed col read: {e}"))?;
+            let v: f64 = row.get(1).map_err(|e| format!("failed col read: {e}"))?;
+            let j: String = row.get(2).map_err(|e| format!("failed col read: {e}"))?;
+            println!("metric key={k} value={v} json={j}");
+        }
+    }
+
+    if let Some(prefix) = prefix {
+        let mut stmt = conn
+            .prepare(
+                "SELECT metric_key, COALESCE(metric_value, 0), COALESCE(metric_json, '')
+                 FROM metrics
+                 WHERE scope_id = ?1 AND uid = ?2 AND metric_key LIKE ?3
+                 ORDER BY metric_key ASC",
+            )
+            .map_err(|e| format!("failed to prepare metric prefix query: {e}"))?;
+        let like = format!("{prefix}%");
+        let rows = stmt
+            .query_map(params![scope_id, uid, like], |row| {
+                let k: String = row.get(0)?;
+                let v: f64 = row.get(1)?;
+                let j: String = row.get(2)?;
+                Ok((k, v, j))
+            })
+            .map_err(|e| format!("failed to run metric prefix query: {e}"))?;
+
+        for row in rows {
+            let (k, v, j) = row.map_err(|e| format!("failed row read: {e}"))?;
+            println!("metric key={k} value={v} json={j}");
+        }
+    }
+
+    Ok(())
+}
+
 pub fn query_topk(
     db_path: &str,
     uid: &str,
