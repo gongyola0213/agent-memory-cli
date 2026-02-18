@@ -1,0 +1,10 @@
+[package]
+name = "agent-memory-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Local-first memory engine CLI scaffold for personal agents"
+repository = "https://github.com/gongyola0213/agent-memory-cli"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }

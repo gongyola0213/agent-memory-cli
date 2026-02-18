@@ -27,6 +27,14 @@ A lightweight local-first memory engine CLI for personal agents (OpenClaw/Claude
 - `query latest|metric|topk`
 - `state get|set|delete`
 
+## Development
+
+```bash
+make lint      # clippy with warnings denied
+make typecheck # cargo check
+make test
+```
+
 ## Status
 
 Scaffolding phase.
