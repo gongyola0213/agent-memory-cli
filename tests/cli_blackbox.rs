@@ -137,6 +137,90 @@ fn schema_validate_user_context_without_ref_user_id_fails() {
 }
 
 #[test]
+fn schema_validate_fails_when_fields_missing() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("domain-no-fields.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "place.v1",
+  "version": "1",
+  "class": "domain"
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("fields[] is required"));
+}
+
+#[test]
+fn schema_validate_fails_on_invalid_class() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("invalid-class.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "place.v1",
+  "version": "1",
+  "class": "entity",
+  "fields": [{"name":"placeId","type":"string"}]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("invalid class"));
+}
+
+#[test]
+fn schema_validate_fails_on_duplicate_field_names() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("duplicate-fields.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "restaurant.rating.v1",
+  "version": "1",
+  "class": "user_context",
+  "fields": [
+    {"name":"refUserId","type":"string"},
+    {"name":"score","type":"number"},
+    {"name":"score","type":"number"}
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("duplicate field"));
+}
+
+#[test]
 fn schema_register_and_list_works() {
     let dir = tempdir().unwrap();
     let db_str = dir
