@@ -5,6 +5,16 @@ if [ -f "$HOME/.cargo/env" ]; then
   . "$HOME/.cargo/env"
 fi
 
+# Fallback for non-login shells where cargo env is not loaded.
+if ! command -v cargo >/dev/null 2>&1; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "[pre-push] cargo not found. Install Rust or expose cargo in PATH." >&2
+  exit 127
+fi
+
 echo "[pre-push] cargo check --all-targets --all-features"
 cargo check --all-targets --all-features
 
