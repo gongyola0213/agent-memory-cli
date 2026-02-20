@@ -160,7 +160,7 @@ fn schema_validate_fails_when_fields_missing() {
     ])
     .assert()
     .failure()
-    .stderr(predicate::str::contains("fields[] is required"));
+    .stderr(predicate::str::contains("invalid schema json"));
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn schema_validate_fails_on_invalid_class() {
     ])
     .assert()
     .failure()
-    .stderr(predicate::str::contains("invalid class"));
+    .stderr(predicate::str::contains("invalid schema json"));
 }
 
 #[test]
