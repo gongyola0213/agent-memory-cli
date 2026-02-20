@@ -2,6 +2,15 @@ use crate::domain::{DomainEvent, EventObserver};
 use crate::repository::user_repo;
 use rusqlite::{params, Connection};
 
+pub struct UserRefCounts {
+    pub identities: i64,
+    pub scope_members: i64,
+    pub events: i64,
+    pub state: i64,
+    pub metrics: i64,
+    pub topk: i64,
+}
+
 pub fn create(
     conn: &Connection,
     uid: &str,
@@ -154,5 +163,39 @@ pub fn merge(conn: &mut Connection, from_uid: &str, to_uid: &str, now: &str) -> 
 
     tx.commit()
         .map_err(|e| format!("failed to commit merge: {e}"))?;
+    Ok(())
+}
+
+pub fn ref_counts(conn: &Connection, uid: &str) -> Result<UserRefCounts, String> {
+    Ok(UserRefCounts {
+        identities: user_repo::count_user_identities(conn, uid)?,
+        scope_members: user_repo::count_scope_members(conn, uid)?,
+        events: user_repo::count_events(conn, uid)?,
+        state: user_repo::count_state(conn, uid)?,
+        metrics: user_repo::count_metrics(conn, uid)?,
+        topk: user_repo::count_topk(conn, uid)?,
+    })
+}
+
+pub fn delete_soft(conn: &Connection, uid: &str, now: &str) -> Result<(), String> {
+    if !user_repo::exists(conn, uid)? {
+        return Err(format!("user not found: {uid}"));
+    }
+    user_repo::set_status(conn, uid, "deleted", now)?;
+    Ok(())
+}
+
+pub fn delete_hard(conn: &Connection, uid: &str, now: &str, force: bool) -> Result<(), String> {
+    if !force {
+        return Err("hard delete requires --force".to_string());
+    }
+    if !user_repo::exists(conn, uid)? {
+        return Err(format!("user not found: {uid}"));
+    }
+    let status = user_repo::get_status(conn, uid)?.unwrap_or_default();
+    if status != "merged" {
+        return Err("hard delete is allowed only for users with status=merged".to_string());
+    }
+    user_repo::set_status(conn, uid, "deleted", now)?;
     Ok(())
 }

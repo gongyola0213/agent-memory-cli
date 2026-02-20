@@ -40,14 +40,15 @@ fn top_level_help_includes_spec_command_groups() {
 }
 
 #[test]
-fn user_help_supports_create_list_show_update_merge() {
+fn user_help_supports_create_list_show_update_merge_delete() {
     let mut cmd = bin();
     cmd.args(["user", "--help"]).assert().success().stdout(
         predicate::str::contains("create")
             .and(predicate::str::contains("list"))
             .and(predicate::str::contains("show"))
             .and(predicate::str::contains("update"))
-            .and(predicate::str::contains("merge")),
+            .and(predicate::str::contains("merge"))
+            .and(predicate::str::contains("delete")),
     );
 }
 
@@ -1940,6 +1941,96 @@ fn query_topk_json_empty_returns_array() {
     .assert()
     .success()
     .stdout(predicate::str::contains("[]"));
+}
+
+#[test]
+fn user_delete_soft_marks_user_deleted() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("user-delete-soft.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO users (uid, display_name, status, created_at, updated_at) VALUES ('u_del', 'DeleteMe', 'active', '1', '1')",
+        [],
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args(["--db", &db_str, "user", "delete", "--uid", "u_del"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mode=soft"));
+
+    let status: String = conn
+        .query_row("SELECT status FROM users WHERE uid='u_del'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(status, "deleted");
+}
+
+#[test]
+fn user_delete_hard_requires_force() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("user-delete-hard-force.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO users (uid, display_name, status, created_at, updated_at) VALUES ('u_hard', 'Hard', 'merged', '1', '1')",
+        [],
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "--db", &db_str, "user", "delete", "--uid", "u_hard", "--mode", "hard",
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("--force"));
+}
+
+#[test]
+fn user_delete_dry_run_prints_preflight_counts() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("user-delete-dry-run.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO users (uid, display_name, status, created_at, updated_at) VALUES ('u_dry', 'Dry', 'active', '1', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scopes (scope_id, scope_type, created_at) VALUES ('shared:dry', 'shared', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scope_members (scope_id, uid, role, added_at) VALUES ('shared:dry', 'u_dry', 'member', '1')",
+        [],
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "--db",
+        &db_str,
+        "user",
+        "delete",
+        "--uid",
+        "u_dry",
+        "--dry-run",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("delete preflight"));
 }
 
 #[test]
