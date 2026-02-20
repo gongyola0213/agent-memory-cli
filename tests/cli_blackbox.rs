@@ -138,7 +138,11 @@ fn schema_validate_user_context_without_ref_user_id_fails() {
 #[test]
 fn schema_register_and_list_works() {
     let dir = tempdir().unwrap();
-    let db_str = dir.path().join("schema-register.db").to_string_lossy().to_string();
+    let db_str = dir
+        .path()
+        .join("schema-register.db")
+        .to_string_lossy()
+        .to_string();
     migrate_db(&db_str);
 
     let schema_path = dir.path().join("user-context-valid.schema.json");
