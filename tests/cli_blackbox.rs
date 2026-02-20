@@ -82,6 +82,103 @@ fn schema_help_supports_register_list_validate() {
 }
 
 #[test]
+fn schema_validate_domain_without_ref_user_id_succeeds() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("domain.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "place.v1",
+  "version": "1",
+  "class": "domain",
+  "fields": [{"name":"placeId","type":"string"}]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("schema valid"));
+}
+
+#[test]
+fn schema_validate_user_context_without_ref_user_id_fails() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("user-context-invalid.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "restaurant.rating.v1",
+  "version": "1",
+  "class": "user_context",
+  "fields": [{"name":"restaurantId","type":"string"}]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("refUserId"));
+}
+
+#[test]
+fn schema_register_and_list_works() {
+    let dir = tempdir().unwrap();
+    let db_str = dir.path().join("schema-register.db").to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let schema_path = dir.path().join("user-context-valid.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "restaurant.rating.v1",
+  "version": "1",
+  "class": "user_context",
+  "fields": [
+    {"name":"refUserId","type":"string"},
+    {"name":"restaurantId","type":"string"},
+    {"name":"score","type":"number"}
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let mut register = bin();
+    register
+        .args([
+            "--db",
+            &db_str,
+            "schema",
+            "register",
+            "--file",
+            schema_path.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("registered schema"));
+
+    let mut list = bin();
+    list.args(["--db", &db_str, "schema", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("schema_id=restaurant.rating.v1"));
+}
+
+#[test]
 fn ingest_help_supports_event_and_batch() {
     let mut cmd = bin();
     cmd.args(["ingest", "--help"])
