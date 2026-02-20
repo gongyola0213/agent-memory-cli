@@ -70,6 +70,28 @@ If any step fails, rollback entire transaction.
 3. `investment.updated` -> latest investment style + trend metric
 4. `expense.logged` -> `topk(spend_category)`
 
+## Dynamic Schema Contract (v0.2 direction)
+For dynamic domain expansion (movie/game/performance/docs/email-style/etc), split schema classes:
+
+1. **Domain schema (entity)**
+   - Independent objects (e.g., place, city, restaurant, category, show).
+   - Must be modelable without user linkage.
+   - `refUserId` is **not required**.
+
+2. **User-context schema (fact/edge)**
+   - User-specific relations (e.g., liked, visited, rated, satisfied_with, recommended_to).
+   - Must include `refUserId` (canonical `uid` reference).
+   - Recommended fields: `refScopeId`, `sourceEventId`, `createdAt`, `updatedAt`.
+
+Validation rule:
+- Require `refUserId` only for user-context schema.
+- Do not require `refUserId` for pure domain schema.
+
+Lifecycle rule:
+- User merge/delete operations must process user-context dynamic tables by `refUserId`.
+- Domain schemas remain independent; only relation tables are rewritten/relinked as needed.
+- New dynamic schema modules must provide merge/delete handling hooks (or use shared default hook) before activation.
+
 ## Security & Governance
 - Sensitive classes (finance/account/health): summary-first, minimal raw storage.
 - External/irreversible actions require explicit confirmation.

@@ -82,6 +82,107 @@ fn schema_help_supports_register_list_validate() {
 }
 
 #[test]
+fn schema_validate_domain_without_ref_user_id_succeeds() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("domain.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "place.v1",
+  "version": "1",
+  "class": "domain",
+  "fields": [{"name":"placeId","type":"string"}]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("schema valid"));
+}
+
+#[test]
+fn schema_validate_user_context_without_ref_user_id_fails() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("user-context-invalid.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "restaurant.rating.v1",
+  "version": "1",
+  "class": "user_context",
+  "fields": [{"name":"restaurantId","type":"string"}]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("refUserId"));
+}
+
+#[test]
+fn schema_register_and_list_works() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("schema-register.db")
+        .to_string_lossy()
+        .to_string();
+    migrate_db(&db_str);
+
+    let schema_path = dir.path().join("user-context-valid.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "restaurant.rating.v1",
+  "version": "1",
+  "class": "user_context",
+  "fields": [
+    {"name":"refUserId","type":"string"},
+    {"name":"restaurantId","type":"string"},
+    {"name":"score","type":"number"}
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let mut register = bin();
+    register
+        .args([
+            "--db",
+            &db_str,
+            "schema",
+            "register",
+            "--file",
+            schema_path.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("registered schema"));
+
+    let mut list = bin();
+    list.args(["--db", &db_str, "schema", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("schema_id=restaurant.rating.v1"));
+}
+
+#[test]
 fn ingest_help_supports_event_and_batch() {
     let mut cmd = bin();
     cmd.args(["ingest", "--help"])
@@ -1381,4 +1482,377 @@ fn ingest_request_logged_requires_pattern() {
         .stderr(predicate::str::contains(
             "request.logged requires string field: pattern",
         ));
+}
+
+#[test]
+fn doctor_supports_json_output() {
+    let dir = tempdir().unwrap();
+    let db_str = dir
+        .path()
+        .join("doctor-json.db")
+        .to_string_lossy()
+        .to_string();
+    migrate_db(&db_str);
+
+    let mut cmd = bin();
+    cmd.args(["--db", &db_str, "--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("\"ok\":true")
+                .and(predicate::str::contains("\"schema_initialized\":true")),
+        );
+}
+
+#[test]
+fn query_topk_supports_json_output() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("topk-json.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let f = dir.path().join("m.json");
+    fs::write(&f, r#"{"cuisine":"korean"}"#).unwrap();
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &f.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut topk = bin();
+    topk.args([
+        "--db",
+        &db_str,
+        "--json",
+        "query",
+        "topk",
+        "--uid",
+        &uid,
+        "--scope",
+        "private:test",
+        "--topic",
+        "food_pref",
+        "--limit",
+        "1",
+    ])
+    .assert()
+    .success()
+    .stdout(
+        predicate::str::contains("\"rank\":1").and(predicate::str::contains("\"item\":\"korean\"")),
+    );
+}
+
+#[test]
+fn query_latest_supports_json_output() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("latest-json.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let f = dir.path().join("meal.json");
+    fs::write(&f, r#"{"cuisine":"korean"}"#).unwrap();
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &f.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut latest = bin();
+    latest
+        .args([
+            "--db",
+            &db_str,
+            "--json",
+            "query",
+            "latest",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("\"event_id\":")
+                .and(predicate::str::contains("\"event_type\":\"meal.rated\""))
+                .and(predicate::str::contains("\"event_ts\":")),
+        );
+}
+
+#[test]
+fn query_metric_supports_json_key_output() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("metric-json-key.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let f = dir.path().join("meal.json");
+    fs::write(&f, r#"{"cuisine":"korean"}"#).unwrap();
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "meal.rated",
+            "--file",
+            &f.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut metric = bin();
+    metric
+        .args([
+            "--db",
+            &db_str,
+            "--json",
+            "query",
+            "metric",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--key",
+            "counter:food_pref:korean",
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("\"key\":\"counter:food_pref:korean\"")
+                .and(predicate::str::contains("\"value\":1.0")),
+        );
+}
+
+#[test]
+fn query_metric_supports_json_prefix_output() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("metric-json-prefix.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let f = dir.path().join("expense.json");
+    fs::write(&f, r#"{"category":"coffee"}"#).unwrap();
+    let mut ingest = bin();
+    ingest
+        .args([
+            "--db",
+            &db_str,
+            "ingest",
+            "event",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--type",
+            "expense.logged",
+            "--file",
+            &f.to_string_lossy(),
+        ])
+        .assert()
+        .success();
+
+    let mut metric = bin();
+    metric
+        .args([
+            "--db",
+            &db_str,
+            "--json",
+            "query",
+            "metric",
+            "--uid",
+            &uid,
+            "--scope",
+            "private:test",
+            "--prefix",
+            "counter:spend_category:",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("counter:spend_category:coffee"));
+}
+
+#[test]
+fn query_topk_json_empty_returns_array() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("topk-empty-json.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let mut create_user = bin();
+    create_user
+        .args(["--db", &db_str, "user", "create", "--name", "Y"])
+        .assert()
+        .success();
+    let conn = Connection::open(&db_path).unwrap();
+    let uid: String = conn
+        .query_row("SELECT uid FROM users LIMIT 1", [], |r| r.get(0))
+        .unwrap();
+
+    let mut create_scope = bin();
+    create_scope
+        .args([
+            "--db",
+            &db_str,
+            "scope",
+            "create",
+            "--id",
+            "private:test",
+            "--type",
+            "private",
+        ])
+        .assert()
+        .success();
+
+    let mut topk = bin();
+    topk.args([
+        "--db",
+        &db_str,
+        "--json",
+        "query",
+        "topk",
+        "--uid",
+        &uid,
+        "--scope",
+        "private:test",
+        "--topic",
+        "food_pref",
+        "--limit",
+        "3",
+    ])
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("[]"));
 }

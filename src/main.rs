@@ -14,6 +14,10 @@ struct Cli {
     #[arg(long, global = true, default_value = "data/agent-memory.db")]
     db: String,
 
+    /// Emit JSON output for supported commands
+    #[arg(long, global = true, default_value_t = false)]
+    json: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -151,9 +155,15 @@ struct ScopeMembersArgs {
 
 #[derive(Subcommand, Debug)]
 enum SchemaCommands {
-    Register,
+    Register(SchemaFileArgs),
     List,
-    Validate,
+    Validate(SchemaFileArgs),
+}
+
+#[derive(Args, Debug)]
+struct SchemaFileArgs {
+    #[arg(long = "file")]
+    file: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -234,10 +244,7 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Doctor => {
-            commands::doctor();
-            Ok(())
-        }
+        Commands::Doctor => commands::doctor(&cli.db, cli.json),
         Commands::User { command } => match command {
             UserCommands::Create(args) => commands::user_create(&cli.db, &args.name),
             UserCommands::List => commands::user_list(&cli.db),
@@ -265,10 +272,11 @@ fn main() {
             ScopeCommands::List => commands::scope_list(&cli.db),
             ScopeCommands::Members(args) => commands::scope_members(&cli.db, &args.scope_id),
         },
-        Commands::Schema { command } => {
-            commands::todo("schema", &format!("{:?}", command));
-            Ok(())
-        }
+        Commands::Schema { command } => match command {
+            SchemaCommands::Register(args) => commands::schema_register(&cli.db, &args.file),
+            SchemaCommands::List => commands::schema_list(&cli.db),
+            SchemaCommands::Validate(args) => commands::schema_validate(&args.file),
+        },
         Commands::Ingest { command } => match command {
             IngestCommands::Event(args) => commands::ingest_event(
                 &cli.db,
@@ -285,7 +293,7 @@ fn main() {
         },
         Commands::Query { command } => match command {
             QueryCommands::Latest(args) => {
-                commands::query_latest(&cli.db, &args.uid, &args.scope_id)
+                commands::query_latest(&cli.db, &args.uid, &args.scope_id, cli.json)
             }
             QueryCommands::Metric(args) => commands::query_metric(
                 &cli.db,
@@ -293,10 +301,16 @@ fn main() {
                 &args.scope_id,
                 args.key.as_deref(),
                 args.prefix.as_deref(),
+                cli.json,
             ),
-            QueryCommands::Topk(args) => {
-                commands::query_topk(&cli.db, &args.uid, &args.scope_id, &args.topic, args.limit)
-            }
+            QueryCommands::Topk(args) => commands::query_topk(
+                &cli.db,
+                &args.uid,
+                &args.scope_id,
+                &args.topic,
+                args.limit,
+                cli.json,
+            ),
         },
         Commands::State { command } => {
             commands::todo("state", &format!("{:?}", command));
