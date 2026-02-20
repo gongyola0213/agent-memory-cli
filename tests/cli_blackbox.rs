@@ -137,6 +137,90 @@ fn schema_validate_user_context_without_ref_user_id_fails() {
 }
 
 #[test]
+fn schema_validate_fails_when_fields_missing() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("domain-no-fields.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "place.v1",
+  "version": "1",
+  "class": "domain"
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("fields[] is required"));
+}
+
+#[test]
+fn schema_validate_fails_on_invalid_class() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("invalid-class.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "place.v1",
+  "version": "1",
+  "class": "entity",
+  "fields": [{"name":"placeId","type":"string"}]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("invalid class"));
+}
+
+#[test]
+fn schema_validate_fails_on_duplicate_field_names() {
+    let dir = tempdir().unwrap();
+    let schema_path = dir.path().join("duplicate-fields.schema.json");
+    fs::write(
+        &schema_path,
+        r#"{
+  "schema_id": "restaurant.rating.v1",
+  "version": "1",
+  "class": "user_context",
+  "fields": [
+    {"name":"refUserId","type":"string"},
+    {"name":"score","type":"number"},
+    {"name":"score","type":"number"}
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let mut cmd = bin();
+    cmd.args([
+        "schema",
+        "validate",
+        "--file",
+        schema_path.to_string_lossy().as_ref(),
+    ])
+    .assert()
+    .failure()
+    .stderr(predicate::str::contains("duplicate field"));
+}
+
+#[test]
 fn schema_register_and_list_works() {
     let dir = tempdir().unwrap();
     let db_str = dir
@@ -1932,18 +2016,13 @@ fn user_merge_moves_relations_and_marks_source_merged() {
     let mut merge = bin();
     merge
         .args([
-            "--db",
-            &db_str,
-            "user",
-            "merge",
-            "--from",
-            "u_from",
-            "--to",
-            "u_to",
+            "--db", &db_str, "user", "merge", "--from", "u_from", "--to", "u_to",
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("merged user from_uid=u_from to_uid=u_to"));
+        .stdout(predicate::str::contains(
+            "merged user from_uid=u_from to_uid=u_to",
+        ));
 
     let moved_identity_uid: String = conn
         .query_row(
@@ -1964,7 +2043,9 @@ fn user_merge_moves_relations_and_marks_source_merged() {
     assert_eq!(scope_member_count_to, 1);
 
     let event_from_count: i64 = conn
-        .query_row("SELECT COUNT(1) FROM events WHERE uid='u_from'", [], |r| r.get(0))
+        .query_row("SELECT COUNT(1) FROM events WHERE uid='u_from'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(event_from_count, 0);
 
@@ -2005,7 +2086,9 @@ fn user_merge_moves_relations_and_marks_source_merged() {
     assert_eq!(topk_uid, "u_to");
 
     let from_status: String = conn
-        .query_row("SELECT status FROM users WHERE uid='u_from'", [], |r| r.get(0))
+        .query_row("SELECT status FROM users WHERE uid='u_from'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(from_status, "merged");
 }

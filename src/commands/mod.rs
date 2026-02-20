@@ -5,6 +5,7 @@ use crate::service::{
 };
 use rusqlite::Connection;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -239,50 +240,57 @@ pub fn scope_members(db_path: &str, scope_id: &str) -> Result<(), String> {
 fn validate_dynamic_schema(v: &Value) -> Result<(), String> {
     let obj = v
         .as_object()
-        .ok_or_else(|| "schema file must be a JSON object".to_string())?;
+        .ok_or_else(|| "schema validation failed: schema file must be a JSON object".to_string())?;
 
     let schema_id = obj
         .get("schema_id")
         .and_then(|x| x.as_str())
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "schema_id is required".to_string())?;
+        .ok_or_else(|| "schema validation failed: schema_id is required".to_string())?;
 
     let _version = obj
         .get("version")
         .and_then(|x| x.as_str())
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "version is required".to_string())?;
+        .ok_or_else(|| "schema validation failed: version is required".to_string())?;
 
-    let class = obj
-        .get("class")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| "class is required: domain|user_context".to_string())?;
+    let class = obj.get("class").and_then(|x| x.as_str()).ok_or_else(|| {
+        "schema validation failed: class is required (domain|user_context)".to_string()
+    })?;
 
     if class != "domain" && class != "user_context" {
         return Err(format!(
-            "invalid class for schema_id={schema_id}: {class} (expected domain|user_context)"
+            "schema validation failed: invalid class for schema_id={schema_id}: {class} (expected domain|user_context)"
         ));
     }
 
-    if class == "user_context" {
-        let fields = obj
-            .get("fields")
-            .and_then(|x| x.as_array())
-            .ok_or_else(|| "user_context schema requires fields[]".to_string())?;
+    let fields = obj
+        .get("fields")
+        .and_then(|x| x.as_array())
+        .ok_or_else(|| "schema validation failed: fields[] is required".to_string())?;
 
-        let has_ref_user = fields.iter().any(|f| {
-            f.as_object()
-                .and_then(|m| m.get("name"))
-                .and_then(|n| n.as_str())
-                .map(|n| n == "refUserId")
-                .unwrap_or(false)
-        });
+    let mut names = HashSet::new();
+    for field in fields {
+        let name = field
+            .as_object()
+            .and_then(|m| m.get("name"))
+            .and_then(|n| n.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .ok_or_else(|| {
+                "schema validation failed: each field requires non-empty name".to_string()
+            })?;
 
-        if !has_ref_user {
+        if !names.insert(name.to_string()) {
             return Err(format!(
-                "user_context schema_id={schema_id} must include field name=refUserId"
+                "schema validation failed: duplicate field name='{name}' in schema_id={schema_id}"
             ));
         }
+    }
+
+    if class == "user_context" && !names.contains("refUserId") {
+        return Err(format!(
+            "schema validation failed: user_context schema_id={schema_id} must include field name=refUserId"
+        ));
     }
 
     Ok(())

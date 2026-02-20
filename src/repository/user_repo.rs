@@ -49,9 +49,11 @@ pub fn update_name(conn: &Connection, uid: &str, name: &str, now: &str) -> Resul
 
 pub fn exists(conn: &Connection, uid: &str) -> Result<bool, String> {
     let n: i64 = conn
-        .query_row("SELECT COUNT(1) FROM users WHERE uid = ?1", params![uid], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(1) FROM users WHERE uid = ?1",
+            params![uid],
+            |row| row.get(0),
+        )
         .map_err(|e| format!("failed to query user existence: {e}"))?;
     Ok(n > 0)
 }

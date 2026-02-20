@@ -60,7 +60,10 @@ agent-memory-cli schema validate --file schema/food.json
 ```
 
 Dynamic schema registration contract:
-- Schemas must declare class: `domain` or `user_context`.
+- Required top-level keys: `schema_id`, `version`, `class`, `fields`.
+- `class` must be one of: `domain`, `user_context`.
+- `fields` must be an array and each field must have a non-empty `name`.
+- Duplicate field names are not allowed.
 - `user_context` schemas require `refUserId`.
 - `domain` schemas do not require `refUserId`.
 - Missing `refUserId` must fail validation only for `user_context` schemas.
