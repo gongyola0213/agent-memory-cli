@@ -153,6 +153,45 @@ pub fn user_merge(db_path: &str, from_uid: &str, to_uid: &str) -> Result<(), Str
     Ok(())
 }
 
+pub fn user_delete(
+    db_path: &str,
+    uid: &str,
+    mode: &str,
+    force: bool,
+    dry_run: bool,
+) -> Result<(), String> {
+    let conn = open_db_checked(db_path)?;
+    let counts = user_service::ref_counts(&conn, uid)?;
+
+    if dry_run {
+        println!(
+            "delete preflight uid={uid} mode={mode} identities={} scope_members={} events={} state={} metrics={} topk={}",
+            counts.identities,
+            counts.scope_members,
+            counts.events,
+            counts.state,
+            counts.metrics,
+            counts.topk,
+        );
+        return Ok(());
+    }
+
+    let now = now_ts();
+    match mode {
+        "soft" => {
+            user_service::delete_soft(&conn, uid, &now)?;
+            println!("deleted user uid={uid} mode=soft");
+            Ok(())
+        }
+        "hard" => {
+            user_service::delete_hard(&conn, uid, &now, force)?;
+            println!("deleted user uid={uid} mode=hard");
+            Ok(())
+        }
+        _ => Err("invalid --mode. expected: soft|hard".to_string()),
+    }
+}
+
 pub fn identity_link(
     db_path: &str,
     uid: &str,

@@ -20,7 +20,16 @@ agent-memory-cli user create --name "Yongseong Kim"
 agent-memory-cli user list
 agent-memory-cli user show --uid <uid>
 agent-memory-cli user update --uid <uid> --name "New Name"
+agent-memory-cli user merge --from <from_uid> --to <to_uid>
+agent-memory-cli user delete --uid <uid> --mode soft
+agent-memory-cli user delete --uid <uid> --mode hard --force
+agent-memory-cli user delete --uid <uid> --mode soft --dry-run
 ```
+
+Delete guard policy (current):
+- default mode is `soft`
+- `hard` requires `--force`
+- `hard` is allowed only when user status is `merged`
 
 ## identity
 Map channel identities to canonical users.

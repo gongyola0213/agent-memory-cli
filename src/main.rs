@@ -75,6 +75,7 @@ enum UserCommands {
     Show(UserShowArgs),
     Update(UserUpdateArgs),
     Merge(UserMergeArgs),
+    Delete(UserDeleteArgs),
 }
 
 #[derive(Args, Debug)]
@@ -103,6 +104,18 @@ struct UserMergeArgs {
     from_uid: String,
     #[arg(long = "to")]
     to_uid: String,
+}
+
+#[derive(Args, Debug)]
+struct UserDeleteArgs {
+    #[arg(long)]
+    uid: String,
+    #[arg(long, default_value = "soft")]
+    mode: String,
+    #[arg(long, default_value_t = false)]
+    force: bool,
+    #[arg(long = "dry-run", default_value_t = false)]
+    dry_run: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -261,6 +274,9 @@ fn main() {
             UserCommands::Update(args) => commands::user_update(&cli.db, &args.uid, &args.name),
             UserCommands::Merge(args) => {
                 commands::user_merge(&cli.db, &args.from_uid, &args.to_uid)
+            }
+            UserCommands::Delete(args) => {
+                commands::user_delete(&cli.db, &args.uid, &args.mode, args.force, args.dry_run)
             }
         },
         Commands::Identity { command } => match command {

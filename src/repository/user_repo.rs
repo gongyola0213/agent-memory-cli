@@ -57,3 +57,51 @@ pub fn exists(conn: &Connection, uid: &str) -> Result<bool, String> {
         .map_err(|e| format!("failed to query user existence: {e}"))?;
     Ok(n > 0)
 }
+
+pub fn get_status(conn: &Connection, uid: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT status FROM users WHERE uid = ?1",
+        params![uid],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("failed to query user status: {e}"))
+}
+
+pub fn set_status(conn: &Connection, uid: &str, status: &str, now: &str) -> Result<usize, String> {
+    conn.execute(
+        "UPDATE users SET status = ?1, updated_at = ?2 WHERE uid = ?3",
+        params![status, now, uid],
+    )
+    .map_err(|e| format!("failed to update user status: {e}"))
+}
+
+fn count_by_uid(conn: &Connection, table: &str, uid: &str) -> Result<i64, String> {
+    let sql = format!("SELECT COUNT(1) FROM {table} WHERE uid = ?1");
+    conn.query_row(&sql, params![uid], |row| row.get(0))
+        .map_err(|e| format!("failed to count rows in {table}: {e}"))
+}
+
+pub fn count_user_identities(conn: &Connection, uid: &str) -> Result<i64, String> {
+    count_by_uid(conn, "user_identities", uid)
+}
+
+pub fn count_scope_members(conn: &Connection, uid: &str) -> Result<i64, String> {
+    count_by_uid(conn, "scope_members", uid)
+}
+
+pub fn count_events(conn: &Connection, uid: &str) -> Result<i64, String> {
+    count_by_uid(conn, "events", uid)
+}
+
+pub fn count_state(conn: &Connection, uid: &str) -> Result<i64, String> {
+    count_by_uid(conn, "state", uid)
+}
+
+pub fn count_metrics(conn: &Connection, uid: &str) -> Result<i64, String> {
+    count_by_uid(conn, "metrics", uid)
+}
+
+pub fn count_topk(conn: &Connection, uid: &str) -> Result<i64, String> {
+    count_by_uid(conn, "topk", uid)
+}
