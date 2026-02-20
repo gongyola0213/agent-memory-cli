@@ -140,6 +140,18 @@ pub fn user_update(db_path: &str, uid: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn user_merge(db_path: &str, from_uid: &str, to_uid: &str) -> Result<(), String> {
+    if from_uid == to_uid {
+        return Err("--from and --to must be different users".to_string());
+    }
+
+    let mut conn = open_db_checked(db_path)?;
+    let now = now_ts();
+    user_service::merge(&mut conn, from_uid, to_uid, &now)?;
+    println!("merged user from_uid={from_uid} to_uid={to_uid}");
+    Ok(())
+}
+
 pub fn identity_link(
     db_path: &str,
     uid: &str,
