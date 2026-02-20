@@ -266,6 +266,16 @@ fn schema_register_and_list_works() {
         .assert()
         .success()
         .stdout(predicate::str::contains("schema_id=restaurant.rating.v1"));
+
+    let conn = Connection::open(dir.path().join("schema-register.db")).unwrap();
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='dyn_restaurant_rating_v1_v1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(exists, 1);
 }
 
 #[test]

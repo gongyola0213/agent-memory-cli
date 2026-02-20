@@ -87,6 +87,11 @@ Validation rule:
 - Require `refUserId` only for user-context schema.
 - Do not require `refUserId` for pure domain schema.
 
+Storage rule (SSOT performance direction):
+- On schema registration, create a physical SQLite table per schema version (`dyn_<schema_id>_v<version>` normalized).
+- Keep schema_registry as metadata source-of-truth for type/version/validation.
+- Use projection outbox for graph-index synchronization events.
+
 Lifecycle rule:
 - User merge/delete operations must process user-context dynamic tables by `refUserId`.
 - Domain schemas remain independent; only relation tables are rewritten/relinked as needed.

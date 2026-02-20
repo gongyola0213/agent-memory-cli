@@ -1,4 +1,5 @@
 pub mod dynamic_record_repo;
+pub mod dynamic_table_repo;
 pub mod event_repo;
 pub mod identity_repo;
 pub mod metric_repo;

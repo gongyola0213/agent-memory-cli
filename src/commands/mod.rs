@@ -1,7 +1,7 @@
 use crate::db;
 use crate::domain::schema::{validate_schema_def, SchemaDef};
 use crate::domain::NoopObserver;
-use crate::repository::{projection_outbox_repo, schema_registry_repo};
+use crate::repository::{dynamic_table_repo, projection_outbox_repo, schema_registry_repo};
 use crate::service::{
     identity_service, ingest_service, query_service, scope_service, user_service,
 };
@@ -297,12 +297,14 @@ pub fn schema_register(db_path: &str, file: &str) -> Result<(), String> {
 
     let now = now_ts();
     schema_registry_repo::upsert(&conn, &def, &raw, &now)?;
+    let table_name = dynamic_table_repo::create_table_for_schema(&conn, &def)?;
 
     let outbox_id = new_id("outbox");
     let payload = json!({
         "event": "schema.registered",
         "schema_id": &def.schema_id,
         "version": &def.version,
+        "table": table_name,
     })
     .to_string();
     projection_outbox_repo::enqueue(
@@ -315,8 +317,10 @@ pub fn schema_register(db_path: &str, file: &str) -> Result<(), String> {
     )?;
 
     println!(
-        "registered schema schema_id={} version={}",
-        def.schema_id, def.version
+        "registered schema schema_id={} version={} table={}",
+        def.schema_id,
+        def.version,
+        dynamic_table_repo::table_name_for(&def)
     );
     Ok(())
 }
