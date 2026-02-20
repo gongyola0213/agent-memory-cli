@@ -409,6 +409,8 @@ fn admin_migrate_creates_expected_core_tables() {
         "metrics",
         "topk",
         "schema_registry",
+        "dynamic_records",
+        "projection_outbox",
     ];
 
     for table in expected {
