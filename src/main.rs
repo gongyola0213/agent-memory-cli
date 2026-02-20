@@ -261,7 +261,7 @@ fn main() {
             UserCommands::Update(args) => commands::user_update(&cli.db, &args.uid, &args.name),
             UserCommands::Merge(args) => {
                 commands::user_merge(&cli.db, &args.from_uid, &args.to_uid)
-            },
+            }
         },
         Commands::Identity { command } => match command {
             IdentityCommands::Link(args) => {
