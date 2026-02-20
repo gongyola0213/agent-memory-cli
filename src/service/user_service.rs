@@ -36,7 +36,9 @@ pub fn merge(conn: &mut Connection, from_uid: &str, to_uid: &str, now: &str) -> 
         return Err(format!("user not found: {to_uid}"));
     }
 
-    let tx = conn.transaction().map_err(|e| format!("failed to start tx: {e}"))?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("failed to start tx: {e}"))?;
 
     tx.execute(
         "UPDATE user_identities SET uid = ?1, updated_at = ?2 WHERE uid = ?3",
@@ -150,6 +152,7 @@ pub fn merge(conn: &mut Connection, from_uid: &str, to_uid: &str, now: &str) -> 
     )
     .map_err(|e| format!("failed to mark source user as merged: {e}"))?;
 
-    tx.commit().map_err(|e| format!("failed to commit merge: {e}"))?;
+    tx.commit()
+        .map_err(|e| format!("failed to commit merge: {e}"))?;
     Ok(())
 }

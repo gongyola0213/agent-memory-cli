@@ -254,10 +254,9 @@ fn validate_dynamic_schema(v: &Value) -> Result<(), String> {
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| "schema validation failed: version is required".to_string())?;
 
-    let class = obj
-        .get("class")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| "schema validation failed: class is required (domain|user_context)".to_string())?;
+    let class = obj.get("class").and_then(|x| x.as_str()).ok_or_else(|| {
+        "schema validation failed: class is required (domain|user_context)".to_string()
+    })?;
 
     if class != "domain" && class != "user_context" {
         return Err(format!(
@@ -277,7 +276,9 @@ fn validate_dynamic_schema(v: &Value) -> Result<(), String> {
             .and_then(|m| m.get("name"))
             .and_then(|n| n.as_str())
             .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| "schema validation failed: each field requires non-empty name".to_string())?;
+            .ok_or_else(|| {
+                "schema validation failed: each field requires non-empty name".to_string()
+            })?;
 
         if !names.insert(name.to_string()) {
             return Err(format!(

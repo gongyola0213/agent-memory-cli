@@ -2016,18 +2016,13 @@ fn user_merge_moves_relations_and_marks_source_merged() {
     let mut merge = bin();
     merge
         .args([
-            "--db",
-            &db_str,
-            "user",
-            "merge",
-            "--from",
-            "u_from",
-            "--to",
-            "u_to",
+            "--db", &db_str, "user", "merge", "--from", "u_from", "--to", "u_to",
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("merged user from_uid=u_from to_uid=u_to"));
+        .stdout(predicate::str::contains(
+            "merged user from_uid=u_from to_uid=u_to",
+        ));
 
     let moved_identity_uid: String = conn
         .query_row(
@@ -2048,7 +2043,9 @@ fn user_merge_moves_relations_and_marks_source_merged() {
     assert_eq!(scope_member_count_to, 1);
 
     let event_from_count: i64 = conn
-        .query_row("SELECT COUNT(1) FROM events WHERE uid='u_from'", [], |r| r.get(0))
+        .query_row("SELECT COUNT(1) FROM events WHERE uid='u_from'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(event_from_count, 0);
 
@@ -2089,7 +2086,9 @@ fn user_merge_moves_relations_and_marks_source_merged() {
     assert_eq!(topk_uid, "u_to");
 
     let from_status: String = conn
-        .query_row("SELECT status FROM users WHERE uid='u_from'", [], |r| r.get(0))
+        .query_row("SELECT status FROM users WHERE uid='u_from'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(from_status, "merged");
 }
