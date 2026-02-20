@@ -40,13 +40,14 @@ fn top_level_help_includes_spec_command_groups() {
 }
 
 #[test]
-fn user_help_supports_create_list_show_update() {
+fn user_help_supports_create_list_show_update_merge() {
     let mut cmd = bin();
     cmd.args(["user", "--help"]).assert().success().stdout(
         predicate::str::contains("create")
             .and(predicate::str::contains("list"))
             .and(predicate::str::contains("show"))
-            .and(predicate::str::contains("update")),
+            .and(predicate::str::contains("update"))
+            .and(predicate::str::contains("merge")),
     );
 }
 
@@ -1855,4 +1856,156 @@ fn query_topk_json_empty_returns_array() {
     .assert()
     .success()
     .stdout(predicate::str::contains("[]"));
+}
+
+#[test]
+fn user_merge_moves_relations_and_marks_source_merged() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("user-merge.db");
+    let db_str = db_path.to_string_lossy().to_string();
+    migrate_db(&db_str);
+
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO users (uid, display_name, status, created_at, updated_at) VALUES ('u_from', 'From', 'active', '1', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (uid, display_name, status, created_at, updated_at) VALUES ('u_to', 'To', 'active', '1', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scopes (scope_id, scope_type, created_at) VALUES ('shared:couple', 'shared', '1')",
+        [],
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO user_identities (identity_id, uid, channel, channel_user_id, is_verified, confidence, created_at, updated_at)
+         VALUES ('ident_1', 'u_from', 'telegram', '999', 1, 1.0, '1', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scope_members (scope_id, uid, role, added_at) VALUES ('shared:couple', 'u_from', 'member', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scope_members (scope_id, uid, role, added_at) VALUES ('shared:couple', 'u_to', 'member', '1')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO events (event_id, uid, scope_id, event_type, event_ts, payload_json, idempotency_key, created_at)
+         VALUES ('evt_from_dup', 'u_from', 'shared:couple', 'meal.rated', '10', '{}', 'dup-key', '10')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO events (event_id, uid, scope_id, event_type, event_ts, payload_json, idempotency_key, created_at)
+         VALUES ('evt_to_dup', 'u_to', 'shared:couple', 'meal.rated', '11', '{}', 'dup-key', '11')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO state (scope_id, uid, state_key, value_json, updated_at)
+         VALUES ('shared:couple', 'u_from', 'travel_food_style', '{\"spicy\":0.5}', '100')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO metrics (scope_id, uid, metric_key, metric_value, metric_json, updated_at)
+         VALUES ('shared:couple', 'u_from', 'counter:food_pref:korean', 2.0, NULL, '100')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO topk (scope_id, uid, topic, rank, item_key, weight, updated_at)
+         VALUES ('shared:couple', 'u_from', 'food_pref', 1, 'korean', 1.0, '100')",
+        [],
+    )
+    .unwrap();
+
+    let mut merge = bin();
+    merge
+        .args([
+            "--db",
+            &db_str,
+            "user",
+            "merge",
+            "--from",
+            "u_from",
+            "--to",
+            "u_to",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("merged user from_uid=u_from to_uid=u_to"));
+
+    let moved_identity_uid: String = conn
+        .query_row(
+            "SELECT uid FROM user_identities WHERE channel='telegram' AND channel_user_id='999'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(moved_identity_uid, "u_to");
+
+    let scope_member_count_to: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM scope_members WHERE scope_id='shared:couple' AND uid='u_to'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(scope_member_count_to, 1);
+
+    let event_from_count: i64 = conn
+        .query_row("SELECT COUNT(1) FROM events WHERE uid='u_from'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(event_from_count, 0);
+
+    let dedup_event_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM events WHERE uid='u_to' AND scope_id='shared:couple' AND idempotency_key='dup-key'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(dedup_event_count, 1);
+
+    let state_uid: String = conn
+        .query_row(
+            "SELECT uid FROM state WHERE scope_id='shared:couple' AND state_key='travel_food_style'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state_uid, "u_to");
+
+    let metric_uid: String = conn
+        .query_row(
+            "SELECT uid FROM metrics WHERE scope_id='shared:couple' AND metric_key='counter:food_pref:korean'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(metric_uid, "u_to");
+
+    let topk_uid: String = conn
+        .query_row(
+            "SELECT uid FROM topk WHERE scope_id='shared:couple' AND topic='food_pref' AND rank=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(topk_uid, "u_to");
+
+    let from_status: String = conn
+        .query_row("SELECT status FROM users WHERE uid='u_from'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(from_status, "merged");
 }

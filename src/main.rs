@@ -74,6 +74,7 @@ enum UserCommands {
     List,
     Show(UserShowArgs),
     Update(UserUpdateArgs),
+    Merge(UserMergeArgs),
 }
 
 #[derive(Args, Debug)]
@@ -94,6 +95,14 @@ struct UserUpdateArgs {
     uid: String,
     #[arg(long)]
     name: String,
+}
+
+#[derive(Args, Debug)]
+struct UserMergeArgs {
+    #[arg(long = "from")]
+    from_uid: String,
+    #[arg(long = "to")]
+    to_uid: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -250,6 +259,7 @@ fn main() {
             UserCommands::List => commands::user_list(&cli.db),
             UserCommands::Show(args) => commands::user_show(&cli.db, &args.uid),
             UserCommands::Update(args) => commands::user_update(&cli.db, &args.uid, &args.name),
+            UserCommands::Merge(args) => commands::user_merge(&cli.db, &args.from_uid, &args.to_uid),
         },
         Commands::Identity { command } => match command {
             IdentityCommands::Link(args) => {
