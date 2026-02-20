@@ -280,7 +280,10 @@ pub fn schema_validate(file: &str) -> Result<(), String> {
     let raw = fs::read_to_string(file).map_err(|e| format!("failed to read schema file: {e}"))?;
     let v: Value = serde_json::from_str(&raw).map_err(|e| format!("invalid schema json: {e}"))?;
     validate_dynamic_schema(&v)?;
-    let schema_id = v.get("schema_id").and_then(|x| x.as_str()).unwrap_or("unknown");
+    let schema_id = v
+        .get("schema_id")
+        .and_then(|x| x.as_str())
+        .unwrap_or("unknown");
     println!("schema valid schema_id={schema_id}");
     Ok(())
 }
