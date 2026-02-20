@@ -224,6 +224,123 @@ pub fn scope_members(db_path: &str, scope_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_dynamic_schema(v: &Value) -> Result<(), String> {
+    let obj = v
+        .as_object()
+        .ok_or_else(|| "schema file must be a JSON object".to_string())?;
+
+    let schema_id = obj
+        .get("schema_id")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "schema_id is required".to_string())?;
+
+    let _version = obj
+        .get("version")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "version is required".to_string())?;
+
+    let class = obj
+        .get("class")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| "class is required: domain|user_context".to_string())?;
+
+    if class != "domain" && class != "user_context" {
+        return Err(format!(
+            "invalid class for schema_id={schema_id}: {class} (expected domain|user_context)"
+        ));
+    }
+
+    if class == "user_context" {
+        let fields = obj
+            .get("fields")
+            .and_then(|x| x.as_array())
+            .ok_or_else(|| "user_context schema requires fields[]".to_string())?;
+
+        let has_ref_user = fields.iter().any(|f| {
+            f.as_object()
+                .and_then(|m| m.get("name"))
+                .and_then(|n| n.as_str())
+                .map(|n| n == "refUserId")
+                .unwrap_or(false)
+        });
+
+        if !has_ref_user {
+            return Err(format!(
+                "user_context schema_id={schema_id} must include field name=refUserId"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+pub fn schema_validate(file: &str) -> Result<(), String> {
+    let raw = fs::read_to_string(file).map_err(|e| format!("failed to read schema file: {e}"))?;
+    let v: Value = serde_json::from_str(&raw).map_err(|e| format!("invalid schema json: {e}"))?;
+    validate_dynamic_schema(&v)?;
+    let schema_id = v.get("schema_id").and_then(|x| x.as_str()).unwrap_or("unknown");
+    println!("schema valid schema_id={schema_id}");
+    Ok(())
+}
+
+pub fn schema_register(db_path: &str, file: &str) -> Result<(), String> {
+    let conn = open_db_checked(db_path)?;
+    let raw = fs::read_to_string(file).map_err(|e| format!("failed to read schema file: {e}"))?;
+    let v: Value = serde_json::from_str(&raw).map_err(|e| format!("invalid schema json: {e}"))?;
+    validate_dynamic_schema(&v)?;
+
+    let schema_id = v
+        .get("schema_id")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| "schema_id is required".to_string())?;
+    let version = v
+        .get("version")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| "version is required".to_string())?;
+
+    let now = now_ts();
+    conn.execute(
+        "INSERT INTO schema_registry (schema_id, version, schema_json, is_active, created_at)
+         VALUES (?1, ?2, ?3, 1, ?4)
+         ON CONFLICT(schema_id) DO UPDATE SET version=excluded.version, schema_json=excluded.schema_json, is_active=1",
+        rusqlite::params![schema_id, version, raw, now],
+    )
+    .map_err(|e| format!("failed to register schema: {e}"))?;
+
+    println!("registered schema schema_id={schema_id} version={version}");
+    Ok(())
+}
+
+pub fn schema_list(db_path: &str) -> Result<(), String> {
+    let conn = open_db_checked(db_path)?;
+    let mut stmt = conn
+        .prepare("SELECT schema_id, version, is_active, created_at FROM schema_registry ORDER BY created_at DESC")
+        .map_err(|e| format!("failed to list schemas: {e}"))?;
+
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(|e| format!("failed to read schemas: {e}"))?;
+
+    for row in rows {
+        let (schema_id, version, is_active, created_at) = row.map_err(|e| e.to_string())?;
+        println!(
+            "schema_id={schema_id} version={version} active={} created_at={created_at}",
+            is_active == 1
+        );
+    }
+
+    Ok(())
+}
+
 pub fn ingest_event(
     db_path: &str,
     uid: &str,

@@ -155,9 +155,15 @@ struct ScopeMembersArgs {
 
 #[derive(Subcommand, Debug)]
 enum SchemaCommands {
-    Register,
+    Register(SchemaFileArgs),
     List,
-    Validate,
+    Validate(SchemaFileArgs),
+}
+
+#[derive(Args, Debug)]
+struct SchemaFileArgs {
+    #[arg(long = "file")]
+    file: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -266,10 +272,11 @@ fn main() {
             ScopeCommands::List => commands::scope_list(&cli.db),
             ScopeCommands::Members(args) => commands::scope_members(&cli.db, &args.scope_id),
         },
-        Commands::Schema { command } => {
-            commands::todo("schema", &format!("{:?}", command));
-            Ok(())
-        }
+        Commands::Schema { command } => match command {
+            SchemaCommands::Register(args) => commands::schema_register(&cli.db, &args.file),
+            SchemaCommands::List => commands::schema_list(&cli.db),
+            SchemaCommands::Validate(args) => commands::schema_validate(&args.file),
+        },
         Commands::Ingest { command } => match command {
             IngestCommands::Event(args) => commands::ingest_event(
                 &cli.db,
