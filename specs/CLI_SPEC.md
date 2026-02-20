@@ -59,6 +59,11 @@ agent-memory-cli schema list
 agent-memory-cli schema validate --file schema/food.json
 ```
 
+Dynamic schema registration contract:
+- `refUserId` is required in every dynamic schema definition.
+- Missing `refUserId` must fail validation/registration.
+- Recommended common fields: `refScopeId`, `sourceEventId`, `createdAt`, `updatedAt`.
+
 ## ingest
 Write time-series events.
 

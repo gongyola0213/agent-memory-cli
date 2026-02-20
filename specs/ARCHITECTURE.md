@@ -70,6 +70,19 @@ If any step fails, rollback entire transaction.
 3. `investment.updated` -> latest investment style + trend metric
 4. `expense.logged` -> `topk(spend_category)`
 
+## Dynamic Schema Contract (v0.2 direction)
+For dynamic domain expansion (movie/game/performance/docs/email-style/etc), every dynamic schema must include mandatory user linkage:
+
+- Required field: `refUserId` (canonical `uid` reference)
+- Recommended fields: `refScopeId`, `sourceEventId`, `createdAt`, `updatedAt`
+
+Validation rule:
+- Reject schema registration if `refUserId` is missing.
+
+Lifecycle rule:
+- User merge/delete operations must process dynamic tables by `refUserId`.
+- New dynamic schema modules must provide merge/delete handling hooks (or use shared default hook) before activation.
+
 ## Security & Governance
 - Sensitive classes (finance/account/health): summary-first, minimal raw storage.
 - External/irreversible actions require explicit confirmation.
