@@ -96,3 +96,29 @@ CREATE TABLE IF NOT EXISTS schema_registry (
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS dynamic_records (
+  record_id TEXT PRIMARY KEY,
+  schema_id TEXT NOT NULL,
+  entity_key TEXT NOT NULL,
+  uid TEXT,
+  scope_id TEXT,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(schema_id) REFERENCES schema_registry(schema_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dynamic_records_schema_entity ON dynamic_records(schema_id, entity_key);
+CREATE INDEX IF NOT EXISTS idx_dynamic_records_uid ON dynamic_records(uid);
+
+CREATE TABLE IF NOT EXISTS projection_outbox (
+  outbox_id TEXT PRIMARY KEY,
+  stream TEXT NOT NULL,
+  item_key TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  delivered_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_projection_outbox_stream_created ON projection_outbox(stream, created_at);

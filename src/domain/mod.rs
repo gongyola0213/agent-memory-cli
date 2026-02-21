@@ -1,3 +1,5 @@
+pub mod schema;
+
 #[derive(Debug, Clone)]
 pub enum DomainEvent {
     UserCreated { uid: String },

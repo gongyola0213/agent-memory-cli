@@ -160,7 +160,7 @@ fn schema_validate_fails_when_fields_missing() {
     ])
     .assert()
     .failure()
-    .stderr(predicate::str::contains("fields[] is required"));
+    .stderr(predicate::str::contains("invalid schema json"));
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn schema_validate_fails_on_invalid_class() {
     ])
     .assert()
     .failure()
-    .stderr(predicate::str::contains("invalid class"));
+    .stderr(predicate::str::contains("invalid schema json"));
 }
 
 #[test]
@@ -266,6 +266,16 @@ fn schema_register_and_list_works() {
         .assert()
         .success()
         .stdout(predicate::str::contains("schema_id=restaurant.rating.v1"));
+
+    let conn = Connection::open(dir.path().join("schema-register.db")).unwrap();
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='dyn_restaurant_rating_v1_v1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(exists, 1);
 }
 
 #[test]
@@ -409,6 +419,8 @@ fn admin_migrate_creates_expected_core_tables() {
         "metrics",
         "topk",
         "schema_registry",
+        "dynamic_records",
+        "projection_outbox",
     ];
 
     for table in expected {
